@@ -13,6 +13,7 @@
 
 use crate::anim::ease_out;
 use crate::color::Color;
+use crate::gfx::Icon;
 use crate::typography::TextStyle;
 use crate::widget::*;
 
@@ -20,7 +21,6 @@ const BOX_H: f32 = 32.0;
 const CORNER: f32 = 4.0;
 const BORDER: f32 = 1.0;
 const PAD_L: f32 = 12.0;
-const CHEVRON: char = '\u{E70D}';
 const CHEVRON_SIZE: f32 = 12.0;
 const CHEVRON_RIGHT: f32 = 14.0;
 const POPUP_CORNER: f32 = 8.0;
@@ -117,7 +117,7 @@ impl Widget for ComboBox {
             w: CHEVRON_SIZE,
             h: CHEVRON_SIZE,
         };
-        let _ = ctx.painter.draw_icon(CHEVRON, CHEVRON_SIZE, gly, if self.enabled { t.text_secondary } else { t.text_disabled });
+        ctx.painter.draw_glyph(Icon::ChevronDown, gly, if self.enabled { t.text_secondary } else { t.text_disabled });
     }
 
     fn paint_overlay(&mut self, ctx: &mut PaintCtx) {

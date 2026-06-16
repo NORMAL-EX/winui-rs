@@ -9,6 +9,7 @@
 //! 图标用 Segoe MDL2 Assets 字形；关闭按钮用两条对角线绘制（避免字形缺失）。
 
 use crate::color::Color;
+use crate::gfx::Icon;
 use crate::typography::TextStyle;
 use crate::widget::*;
 
@@ -39,12 +40,12 @@ impl InfoBar {
         InfoBar { severity, title: title.into(), message: message.into(), closed: false, hover_close: false, rect: Rect::default() }
     }
 
-    fn glyph(&self) -> char {
+    fn glyph(&self) -> Icon {
         match self.severity {
-            Severity::Informational => '\u{E946}', // Info
-            Severity::Success => '\u{E930}',       // Completed
-            Severity::Warning => '\u{E7BA}',       // Warning
-            Severity::Error => '\u{EA39}',         // ErrorBadge
+            Severity::Informational => Icon::Info,
+            Severity::Success => Icon::Success,
+            Severity::Warning => Icon::Warning,
+            Severity::Error => Icon::Error,
         }
     }
 
@@ -98,7 +99,7 @@ impl Widget for InfoBar {
 
         // 图标
         let icon = Rect { x: r.x + ICON_X, y: r.center_y() - 10.0, w: 20.0, h: 20.0 };
-        let _ = ctx.painter.draw_icon(self.glyph(), 16.0, icon, self.icon_color(t));
+        ctx.painter.draw_glyph(self.glyph(), icon, self.icon_color(t));
 
         // 标题 + 正文
         let title_rect = Rect { x: r.x + TEXT_X, y: r.y + 10.0, w: r.w - TEXT_X - 48.0, h: 20.0 };

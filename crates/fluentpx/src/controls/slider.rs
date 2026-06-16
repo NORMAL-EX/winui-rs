@@ -20,7 +20,10 @@ const SCALE_NORMAL: f32 = 0.86;
 const SCALE_HOVER: f32 = 1.167;
 const SCALE_PRESSED: f32 = 0.71;
 const SCALE_DISABLED: f32 = 1.167;
-const SCALE_DUR: f64 = 0.15;
+// 源码真值：回到 Normal 用 ControlFastAnimationDuration=167ms，进入 hover/pressed 用
+// ControlNormalAnimationDuration=250ms；均为 FastOutSlowIn 缓动。
+const SCALE_DUR_NORMAL: f64 = 0.167;
+const SCALE_DUR_ACTIVE: f64 = 0.25;
 
 pub struct Slider {
     pub value: f32, // 0..1
@@ -29,6 +32,7 @@ pub struct Slider {
     scale_from: f32,
     scale_to: f32,
     scale_start: f64,
+    scale_dur: f64,
 }
 
 impl Slider {
@@ -40,6 +44,7 @@ impl Slider {
             scale_from: SCALE_NORMAL,
             scale_to: SCALE_NORMAL,
             scale_start: 0.0,
+            scale_dur: SCALE_DUR_NORMAL,
         }
     }
 
@@ -63,13 +68,15 @@ impl Slider {
         self.scale_from = self.current_scale(now);
         self.scale_to = target;
         self.scale_start = now;
+        // 回到 Normal 用较快时长，进入 hover/pressed 用正常时长（源码两档）。
+        self.scale_dur = if (target - SCALE_NORMAL).abs() < f32::EPSILON { SCALE_DUR_NORMAL } else { SCALE_DUR_ACTIVE };
     }
 
     fn current_scale(&self, now: f64) -> f32 {
-        if (now - self.scale_start) >= SCALE_DUR {
+        if (now - self.scale_start) >= self.scale_dur {
             return self.scale_to;
         }
-        let t = ((now - self.scale_start) / SCALE_DUR).clamp(0.0, 1.0) as f32;
+        let t = ((now - self.scale_start) / self.scale_dur).clamp(0.0, 1.0) as f32;
         lerp(self.scale_from, self.scale_to, ease_out(t))
     }
 
@@ -176,7 +183,7 @@ impl Widget for Slider {
     }
 
     fn is_animating(&self, now: f64) -> bool {
-        (now - self.scale_start) < SCALE_DUR
+        (now - self.scale_start) < self.scale_dur
     }
 
     fn accessible_role(&self) -> AccessibleRole {

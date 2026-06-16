@@ -7,6 +7,7 @@
 //! 为在画廊里演示，整体放在一个带边框的盒子里（左窗格 + 右内容区）。
 
 use crate::anim::{cubic_bezier, ease_out, lerp};
+use crate::gfx::Icon;
 use crate::typography::TextStyle;
 use crate::widget::*;
 
@@ -26,7 +27,7 @@ const PAGE_DUR: f64 = 0.3;
 const PAGE_OFFSET: f32 = 16.0;
 
 pub struct NavItem {
-    pub glyph: char,
+    pub icon: Icon,
     pub label: String,
 }
 
@@ -65,10 +66,10 @@ impl NavigationView {
     pub fn demo() -> NavigationView {
         NavigationView::new(
             vec![
-                NavItem { glyph: '\u{E80F}', label: "主页".into() },
-                NavItem { glyph: '\u{E8B7}', label: "文件夹".into() },
-                NavItem { glyph: '\u{E734}', label: "收藏".into() },
-                NavItem { glyph: '\u{E713}', label: "设置".into() },
+                NavItem { icon: Icon::Home, label: "主页".into() },
+                NavItem { icon: Icon::Folder, label: "文件夹".into() },
+                NavItem { icon: Icon::Star, label: "收藏".into() },
+                NavItem { icon: Icon::Settings, label: "设置".into() },
             ],
             0,
             true,
@@ -131,7 +132,7 @@ impl Widget for NavigationView {
             ctx.painter.fill_rounded_rect(Rect { x: tr.x + 4.0, y: tr.y + 4.0, w: 40.0, h: 36.0 }, 4.0, t.subtle_fill_secondary);
         }
         let ham = Rect { x: tr.x + ICON_CX - 8.0, y: tr.center_y() - 8.0, w: 16.0, h: 16.0 };
-        let _ = ctx.painter.draw_icon('\u{E700}', 16.0, ham, t.text_primary);
+        ctx.painter.draw_glyph(Icon::Hamburger, ham, t.text_primary);
 
         // 导航项（背景 / hover / 图标 / 标签）——选中指示条单独做动画绘制。
         for i in 0..self.items.len() {
@@ -142,7 +143,7 @@ impl Widget for NavigationView {
                 ctx.painter.fill_rounded_rect(Rect { x: r.x + 4.0, y: r.y + 2.0, w: r.w - 8.0, h: r.h - 4.0 }, 4.0, t.subtle_fill_secondary);
             }
             let icon = Rect { x: r.x + ICON_CX - 8.0, y: r.center_y() - 8.0, w: 16.0, h: 16.0 };
-            let _ = ctx.painter.draw_icon(self.items[i].glyph, 16.0, icon, t.text_primary);
+            ctx.painter.draw_glyph(self.items[i].icon, icon, t.text_primary);
             if open_amt > 0.05 {
                 let label_rect = Rect { x: r.x + LABEL_X, y: r.y, w: (r.w - LABEL_X - 8.0).max(0.0), h: r.h };
                 let _ = ctx.painter.draw_text_leading(&self.items[i].label, TextStyle::BODY, label_rect, t.text_primary.with_opacity(open_amt));

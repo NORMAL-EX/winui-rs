@@ -9,11 +9,15 @@
 //! 模态焦点捕获：打开时由 gallery 把事件**仅**派发给本控件（见 main 的 dispatch）。
 //! 触发器：本控件在主层画一个「Show ContentDialog」按钮，点击后打开。
 
-use crate::anim::ease_out;
+use crate::anim::cubic_bezier;
 use crate::typography::TextStyle;
 use crate::widget::*;
 
-const OPEN_DUR: f64 = 0.18;
+// 源码真值：Scale 1.05→1.0 / ControlNormalAnimationDuration=250ms / FastOutSlowIn(0,0,0,1)；
+// Opacity（含 smoke+对话框）0→1 线性 / ControlFasterAnimationDuration=83ms。
+const SCALE_DUR: f64 = 0.25;
+const FADE_DUR: f64 = 0.083;
+const OPEN_DUR: f64 = 0.25;
 
 const CORNER: f32 = 8.0;
 const PAD: f32 = 24.0;
@@ -105,16 +109,16 @@ impl Widget for ContentDialog {
         let t = ctx.tokens;
         let vp = ctx.viewport;
 
-        // 入场动画：smoke 淡入；卡片从 1.06 缩放 + 淡入。
-        let prog = ease_out(((ctx.now - self.open_start) / OPEN_DUR).clamp(0.0, 1.0) as f32);
-        let alpha = prog;
+        // 入场动画（源码真值）：透明度 0→1 线性 83ms；缩放 1.05→1.0，250ms，FastOutSlowIn(0,0,0,1)。
+        let alpha = (((ctx.now - self.open_start) / FADE_DUR).clamp(0.0, 1.0)) as f32;
+        let scale_prog = cubic_bezier(0.0, 0.0, 0.0, 1.0, ((ctx.now - self.open_start) / SCALE_DUR).clamp(0.0, 1.0) as f32);
 
-        // 全窗 smoke 遮罩
+        // 全窗 smoke 遮罩（与对话框同步淡入）
         ctx.painter.fill_rect(Rect { x: 0.0, y: 0.0, w: vp.w, h: vp.h }, t.smoke_fill_default.with_opacity(alpha));
 
         // 事件命中用最终矩形；绘制用缩放矩形（围绕中心）。
         let d_final = self.dialog_rect(vp);
-        let scale = 1.06 + (1.0 - 1.06) * prog;
+        let scale = 1.05 + (1.0 - 1.05) * scale_prog;
         let cx = d_final.center_x();
         let cy = d_final.center_y();
         let d = Rect {

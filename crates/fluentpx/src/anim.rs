@@ -44,9 +44,10 @@ pub fn cubic_bezier(p1x: f32, p1y: f32, p2x: f32, p2y: f32, x: f32) -> f32 {
     ((ay * t + by) * t + cy) * t
 }
 
-/// WinUI 标准缓出曲线（FluentEase / 0.0,0.0,0.0,1.0 类的减速缓动）。
+/// WinUI 标准缓动 `ControlFastOutSlowInKeySpline = "0,0,0,1"`（cubic-bezier(0,0,0,1)）。
+/// 控件动画（ToggleSwitch/Slider/ListView/ComboBox/Menu/NavigationView 等）统一用它。
 pub fn ease_out(x: f32) -> f32 {
-    cubic_bezier(0.1, 0.9, 0.2, 1.0, x)
+    cubic_bezier(0.0, 0.0, 0.0, 1.0, x)
 }
 
 /// 颜色过渡：从 `from` 到 `to`，时长 `dur` 秒，线性。

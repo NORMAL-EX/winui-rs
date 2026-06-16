@@ -7,6 +7,7 @@
 
 use crate::anim::ease_out;
 use crate::color::Color;
+use crate::gfx::Icon;
 use crate::typography::TextStyle;
 use crate::widget::*;
 
@@ -97,7 +98,7 @@ impl Widget for Menu {
         let tr = Rect { x: r.x + 12.0, y: r.y, w: r.w - 32.0, h: r.h };
         let _ = ctx.painter.draw_text_leading(&label, TextStyle::BODY, tr, t.text_primary);
         let gly = Rect { x: r.right() - 24.0, y: r.center_y() - 6.0, w: 12.0, h: 12.0 };
-        let _ = ctx.painter.draw_icon('\u{E70D}', 12.0, gly, t.text_secondary);
+        ctx.painter.draw_glyph(Icon::ChevronDown, gly, t.text_secondary);
     }
 
     fn paint_overlay(&mut self, ctx: &mut PaintCtx) {

@@ -29,6 +29,21 @@ pub const TEXT_GAMMA: f32 = 1.8;
 /// ClearType 对比度增强系数。
 pub const TEXT_ENHANCED_CONTRAST: f32 = 0.5;
 
+/// 内置矢量图标（用 D2D 几何绘制，零字体依赖，Fluent 线性风格）。
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Icon {
+    ChevronDown,
+    Hamburger,
+    Home,
+    Folder,
+    Star,
+    Settings,
+    Info,
+    Success,
+    Warning,
+    Error,
+}
+
 /// 进程级 D2D/DWrite 工厂（与窗口无关，可全局复用）。
 pub struct Gfx {
     pub d2d: ID2D1Factory,
@@ -109,7 +124,7 @@ impl Gfx {
             unsafe { rt.SetTextRenderingParams(&params) };
         }
 
-        Ok(Surface { rt, brush: None })
+        Ok(Surface { rt, brush: None, d2d: self.d2d.clone() })
     }
 }
 
@@ -118,6 +133,8 @@ pub struct Surface {
     rt: ID2D1HwndRenderTarget,
     /// 复用的纯色画刷（每次填充前 SetColor，省去反复创建）。
     brush: Option<ID2D1SolidColorBrush>,
+    /// D2D 工厂（创建路径几何用）。
+    d2d: ID2D1Factory,
 }
 
 impl Surface {
@@ -139,6 +156,7 @@ impl Surface {
         unsafe { self.rt.BeginDraw() };
         Ok(Painter {
             rt: &self.rt,
+            d2d: &self.d2d,
             dwrite,
             brush: self.brush.as_ref().unwrap(),
             icon_font,
@@ -150,6 +168,7 @@ impl Surface {
 /// 一帧的绘制器。输入坐标一律是逻辑像素，内部 × `scale` 取整到设备像素。
 pub struct Painter<'a> {
     rt: &'a ID2D1HwndRenderTarget,
+    d2d: &'a ID2D1Factory,
     dwrite: &'a IDWriteFactory,
     brush: &'a ID2D1SolidColorBrush,
     icon_font: &'a str,
@@ -405,6 +424,170 @@ impl<'a> Painter<'a> {
         let p0 = D2D_POINT_2F { x: self.dev(x0), y: self.dev(y0) };
         let p1 = D2D_POINT_2F { x: self.dev(x1), y: self.dev(y1) };
         unsafe { self.rt.DrawLine(p0, p1, self.brush, self.dev(width).max(1.0), None) };
+    }
+
+    // ———————————————— 矢量图标（零字体依赖，避免缺字方块）————————————————
+
+    fn round_stroke(&self) -> Option<ID2D1StrokeStyle> {
+        let props = D2D1_STROKE_STYLE_PROPERTIES {
+            startCap: D2D1_CAP_STYLE_ROUND,
+            endCap: D2D1_CAP_STYLE_ROUND,
+            dashCap: D2D1_CAP_STYLE_ROUND,
+            lineJoin: D2D1_LINE_JOIN_ROUND,
+            miterLimit: 10.0,
+            dashStyle: D2D1_DASH_STYLE_SOLID,
+            dashOffset: 0.0,
+        };
+        unsafe { self.d2d.CreateStrokeStyle(&props, None).ok() }
+    }
+
+    fn build_path(&self, pts: &[(f32, f32)], closed: bool, filled: bool) -> Result<ID2D1PathGeometry> {
+        let geo = unsafe { self.d2d.CreatePathGeometry()? };
+        let sink = unsafe { geo.Open()? };
+        let dev: Vec<D2D_POINT_2F> = pts.iter().map(|&(x, y)| D2D_POINT_2F { x: self.dev(x), y: self.dev(y) }).collect();
+        unsafe {
+            sink.BeginFigure(dev[0], if filled { D2D1_FIGURE_BEGIN_FILLED } else { D2D1_FIGURE_BEGIN_HOLLOW });
+            sink.AddLines(&dev[1..]);
+            sink.EndFigure(if closed { D2D1_FIGURE_END_CLOSED } else { D2D1_FIGURE_END_OPEN });
+            sink.Close()?;
+        }
+        Ok(geo)
+    }
+
+    /// 折线描边（逻辑坐标），圆头圆角，用于 chevron / 勾 / 汉堡等。
+    pub fn stroke_polyline(&self, pts: &[(f32, f32)], color: Color, width: f32) {
+        if pts.len() < 2 {
+            return;
+        }
+        self.set_brush(color);
+        if let Ok(geo) = self.build_path(pts, false, false) {
+            let ss = self.round_stroke();
+            unsafe { self.rt.DrawGeometry(&geo, self.brush, self.dev(width).max(1.0), ss.as_ref()) };
+        }
+    }
+
+    /// 闭合多边形描边。
+    pub fn stroke_polygon(&self, pts: &[(f32, f32)], color: Color, width: f32) {
+        if pts.len() < 2 {
+            return;
+        }
+        self.set_brush(color);
+        if let Ok(geo) = self.build_path(pts, true, false) {
+            let ss = self.round_stroke();
+            unsafe { self.rt.DrawGeometry(&geo, self.brush, self.dev(width).max(1.0), ss.as_ref()) };
+        }
+    }
+
+    /// 闭合多边形填充（用于星形等）。
+    pub fn fill_polygon(&self, pts: &[(f32, f32)], color: Color) {
+        if pts.len() < 3 {
+            return;
+        }
+        self.set_brush(color);
+        if let Ok(geo) = self.build_path(pts, true, true) {
+            unsafe { self.rt.FillGeometry(&geo, self.brush, None) };
+        }
+    }
+
+    pub fn stroke_circle(&self, cx: f32, cy: f32, r: f32, color: Color, width: f32) {
+        self.set_brush(color);
+        let e = D2D1_ELLIPSE { point: D2D_POINT_2F { x: self.dev(cx), y: self.dev(cy) }, radiusX: self.dev(r), radiusY: self.dev(r) };
+        unsafe { self.rt.DrawEllipse(&e, self.brush, self.dev(width).max(1.0), None) };
+    }
+
+    pub fn fill_circle(&self, cx: f32, cy: f32, r: f32, color: Color) {
+        self.set_brush(color);
+        let e = D2D1_ELLIPSE { point: D2D_POINT_2F { x: self.dev(cx), y: self.dev(cy) }, radiusX: self.dev(r), radiusY: self.dev(r) };
+        unsafe { self.rt.FillEllipse(&e, self.brush) };
+    }
+
+    /// 绘制一个内置矢量图标，居中于方形区域 `r`，颜色 `color`。
+    pub fn draw_glyph(&self, icon: Icon, r: Rect, color: Color) {
+        // 单位盒 [0,1]^2 → r 的映射。
+        let m = |u: f32, v: f32| (r.x + u * r.w, r.y + v * r.h);
+        let sw = (r.w / 16.0 * 1.3).max(1.0); // 16px 基准下约 1.3px 线宽
+        match icon {
+            Icon::ChevronDown => {
+                let (a, b, c) = (m(0.30, 0.42), m(0.50, 0.62), m(0.70, 0.42));
+                self.stroke_polyline(&[a, b, c], color, sw);
+            }
+            Icon::Hamburger => {
+                for v in [0.32, 0.50, 0.68] {
+                    let (a, b) = (m(0.20, v), m(0.80, v));
+                    self.stroke_polyline(&[a, b], color, sw);
+                }
+            }
+            Icon::Home => {
+                let roof = [m(0.18, 0.52), m(0.50, 0.24), m(0.82, 0.52)];
+                self.stroke_polyline(&roof, color, sw);
+                let body = [m(0.28, 0.48), m(0.28, 0.80), m(0.72, 0.80), m(0.72, 0.48)];
+                self.stroke_polyline(&body, color, sw);
+            }
+            Icon::Folder => {
+                let f = [
+                    m(0.16, 0.40), m(0.16, 0.74), m(0.84, 0.74), m(0.84, 0.44),
+                    m(0.48, 0.44), m(0.40, 0.34), m(0.18, 0.34), m(0.16, 0.40),
+                ];
+                self.stroke_polygon(&f, color, sw);
+            }
+            Icon::Star => {
+                let cx = r.x + r.w * 0.5;
+                let cy = r.y + r.h * 0.52;
+                let (ro, ri) = (r.w * 0.40, r.w * 0.17);
+                let mut pts = Vec::with_capacity(10);
+                for k in 0..10 {
+                    let ang = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 5.0;
+                    let rad = if k % 2 == 0 { ro } else { ri };
+                    pts.push((cx + rad * ang.cos(), cy + rad * ang.sin()));
+                }
+                self.fill_polygon(&pts, color);
+            }
+            Icon::Settings => {
+                // 齿轮：8 齿外缘多边形描边 + 中心圆。
+                let cx = r.x + r.w * 0.5;
+                let cy = r.y + r.h * 0.5;
+                let (ro, ri) = (r.w * 0.40, r.w * 0.30);
+                let mut pts = Vec::with_capacity(16);
+                for k in 0..16 {
+                    let ang = k as f32 * std::f32::consts::PI / 8.0;
+                    let rad = if k % 2 == 0 { ro } else { ri };
+                    pts.push((cx + rad * ang.cos(), cy + rad * ang.sin()));
+                }
+                self.stroke_polygon(&pts, color, sw);
+                self.stroke_circle(cx, cy, r.w * 0.13, color, sw);
+            }
+            Icon::Info => {
+                let cx = r.x + r.w * 0.5;
+                let cy = r.y + r.h * 0.5;
+                self.stroke_circle(cx, cy, r.w * 0.40, color, sw);
+                self.fill_circle(cx, r.y + r.h * 0.32, r.w * 0.045, color);
+                let (a, b) = (m(0.50, 0.44), m(0.50, 0.70));
+                self.stroke_polyline(&[a, b], color, sw);
+            }
+            Icon::Success => {
+                let cx = r.x + r.w * 0.5;
+                let cy = r.y + r.h * 0.5;
+                self.stroke_circle(cx, cy, r.w * 0.40, color, sw);
+                let chk = [m(0.32, 0.52), m(0.44, 0.64), m(0.68, 0.38)];
+                self.stroke_polyline(&chk, color, sw);
+            }
+            Icon::Warning => {
+                let tri = [m(0.50, 0.18), m(0.86, 0.80), m(0.14, 0.80)];
+                self.stroke_polygon(&tri, color, sw);
+                let (a, b) = (m(0.50, 0.42), m(0.50, 0.60));
+                self.stroke_polyline(&[a, b], color, sw);
+                self.fill_circle(r.x + r.w * 0.5, r.y + r.h * 0.70, r.w * 0.045, color);
+            }
+            Icon::Error => {
+                let cx = r.x + r.w * 0.5;
+                let cy = r.y + r.h * 0.5;
+                self.stroke_circle(cx, cy, r.w * 0.40, color, sw);
+                let (a, b) = (m(0.38, 0.38), m(0.62, 0.62));
+                let (c, d) = (m(0.62, 0.38), m(0.38, 0.62));
+                self.stroke_polyline(&[a, b], color, sw);
+                self.stroke_polyline(&[c, d], color, sw);
+            }
+        }
     }
 
     /// 压入一个裁剪矩形（用于弹出层/列表内容）。需配对 [`Painter::pop_clip`]。
