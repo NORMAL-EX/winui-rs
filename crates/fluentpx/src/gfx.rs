@@ -501,6 +501,38 @@ impl<'a> Painter<'a> {
         unsafe { self.rt.FillEllipse(&e, self.brush) };
     }
 
+    /// 描一段圆弧（角度制，0°=右、顺时针为正），圆头。用于 ProgressRing 旋转弧。
+    pub fn stroke_arc(&self, cx: f32, cy: f32, r: f32, start_deg: f32, sweep_deg: f32, color: Color, width: f32) {
+        if sweep_deg.abs() < 0.01 {
+            return;
+        }
+        self.set_brush(color);
+        let a0 = start_deg.to_radians();
+        let a1 = (start_deg + sweep_deg).to_radians();
+        let p0 = D2D_POINT_2F { x: self.dev(cx + r * a0.cos()), y: self.dev(cy + r * a0.sin()) };
+        let p1 = D2D_POINT_2F { x: self.dev(cx + r * a1.cos()), y: self.dev(cy + r * a1.sin()) };
+        let geo = match unsafe { self.d2d.CreatePathGeometry() } {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        if let Ok(sink) = unsafe { geo.Open() } {
+            unsafe {
+                sink.BeginFigure(p0, D2D1_FIGURE_BEGIN_HOLLOW);
+                sink.AddArc(&D2D1_ARC_SEGMENT {
+                    point: p1,
+                    size: D2D_SIZE_F { width: self.dev(r), height: self.dev(r) },
+                    rotationAngle: 0.0,
+                    sweepDirection: if sweep_deg >= 0.0 { D2D1_SWEEP_DIRECTION_CLOCKWISE } else { D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE },
+                    arcSize: if sweep_deg.abs() > 180.0 { D2D1_ARC_SIZE_LARGE } else { D2D1_ARC_SIZE_SMALL },
+                });
+                sink.EndFigure(D2D1_FIGURE_END_OPEN);
+                let _ = sink.Close();
+            }
+            let ss = self.round_stroke();
+            unsafe { self.rt.DrawGeometry(&geo, self.brush, self.dev(width).max(1.0), ss.as_ref()) };
+        }
+    }
+
     /// 绘制一个内置矢量图标，居中于方形区域 `r`，颜色 `color`。
     pub fn draw_glyph(&self, icon: Icon, r: Rect, color: Color) {
         // 单位盒 [0,1]^2 → r 的映射。

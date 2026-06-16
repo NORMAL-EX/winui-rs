@@ -20,8 +20,9 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
 use fluentpx::controls::{
-    Button, ComboBox, ContentDialog, InfoBar, ListView, Menu, NavigationView, Severity, Slider,
-    TabView, TextBox, ToggleSwitch, ToolTip,
+    Button, CheckBox, CheckState, ComboBox, ContentDialog, InfoBar, ListView, Menu, NavigationView,
+    ProgressBar, ProgressRing, RadioButton, Severity, Slider, TabView, TextBox, ToggleSwitch,
+    ToolTip,
 };
 use fluentpx::gfx::{Gfx, Surface};
 use fluentpx::typography::TextStyle;
@@ -195,6 +196,37 @@ impl App {
                     Box::new(InfoBar::new(Severity::Warning, "警告", "请注意潜在的问题。")),
                     Box::new(InfoBar::new(Severity::Error, "错误", "发生了一个错误，请重试。")),
                 ],
+            },
+            Section {
+                title: "CheckBox（复选框）".into(),
+                title_y: 0.0,
+                items: vec![
+                    Box::new(CheckBox::new("未选中", CheckState::Unchecked)),
+                    Box::new(CheckBox::new("已选中", CheckState::Checked)),
+                    Box::new(CheckBox::new("不确定", CheckState::Indeterminate)),
+                ],
+            },
+            Section {
+                title: "RadioButton（单选按钮）".into(),
+                title_y: 0.0,
+                items: vec![
+                    Box::new(RadioButton::new("选项 A", true)),
+                    Box::new(RadioButton::new("选项 B", false)),
+                    Box::new(RadioButton::new("选项 C", false)),
+                ],
+            },
+            Section {
+                title: "ProgressBar（进度条）".into(),
+                title_y: 0.0,
+                items: vec![
+                    Box::new(ProgressBar::determinate(0.6)),
+                    Box::new(ProgressBar::indeterminate()),
+                ],
+            },
+            Section {
+                title: "ProgressRing（环形进度）".into(),
+                title_y: 0.0,
+                items: vec![Box::new(ProgressRing::new())],
             },
         ];
         App {
