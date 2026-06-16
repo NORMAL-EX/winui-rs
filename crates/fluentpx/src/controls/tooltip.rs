@@ -70,6 +70,9 @@ impl Widget for ToolTip {
             return;
         }
         let t = ctx.tokens;
+        // 淡入（PopupThemeTransition 近似）：显示后 ~150ms 内不透明度 0→1。
+        let shown_for = ctx.now - (self.hover_start + DELAY);
+        let alpha = (shown_for / 0.15).clamp(0.0, 1.0) as f32;
         // 测量气泡内容尺寸
         let text_size = ctx
             .painter
@@ -84,12 +87,12 @@ impl Widget for ToolTip {
 
         // 简易阴影（半透明黑下移 2px 的圆角块），待办：真实投影/模糊。
         let shadow = Rect { x: bubble.x, y: bubble.y + 2.0, w: bubble.w, h: bubble.h };
-        ctx.painter.fill_rounded_rect(shadow, CORNER, crate::color::Color::hex("#30000000"));
+        ctx.painter.fill_rounded_rect(shadow, CORNER, crate::color::Color::hex("#30000000").with_opacity(alpha));
 
-        ctx.painter.fill_rounded_rect(bubble, CORNER, t.solid_bg_tertiary);
-        ctx.painter.stroke_inner(bubble, CORNER, t.surface_stroke_flyout, BORDER);
+        ctx.painter.fill_rounded_rect(bubble, CORNER, t.solid_bg_tertiary.with_opacity(alpha));
+        ctx.painter.stroke_inner(bubble, CORNER, t.surface_stroke_flyout.with_opacity(alpha), BORDER);
         let text_rect = Rect { x: bubble.x + PAD_L, y: bubble.y, w: bubble.w - PAD_L - PAD_R, h: bubble.h };
-        let _ = ctx.painter.draw_text_leading(&self.tip, TextStyle::BODY, text_rect, t.text_primary);
+        let _ = ctx.painter.draw_text_leading(&self.tip, TextStyle::BODY, text_rect, t.text_primary.with_opacity(alpha));
     }
 
     fn on_event(&mut self, ev: InputEvent, now: f64) -> EventResult {
@@ -117,8 +120,8 @@ impl Widget for ToolTip {
     }
 
     fn is_animating(&self, now: f64) -> bool {
-        // 悬停后、显示前需要持续刷新以触发延迟弹出。
-        self.hovered && (now - self.hover_start) < DELAY + 0.05
+        // 悬停后到「显示 + 淡入完成」期间持续刷新（触发延迟弹出 + 淡入）。
+        self.hovered && (now - self.hover_start) < DELAY + 0.2
     }
 
     fn accessible_role(&self) -> AccessibleRole {
