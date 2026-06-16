@@ -51,6 +51,8 @@ struct App {
     theme_btn: Button,
     theme_btn_was_pressed: bool,
     sections: Vec<Section>,
+    /// 动画兜底时限：任何交互/重绘后持续刷新到此刻，保证过渡跑到静止帧。
+    anim_until: f64,
 }
 
 impl App {
@@ -158,6 +160,7 @@ impl App {
             theme_btn: Button::standard(theme_label(theme)),
             theme_btn_was_pressed: false,
             sections,
+            anim_until: 0.0,
         }
     }
 
@@ -314,6 +317,10 @@ impl App {
                 result = result.or(item.on_event(ev, now));
             }
         }
+        // 任何重绘/动画后，兜底持续刷新一小段时间，确保过渡跑到静止帧。
+        if result.redraw || result.animating {
+            self.anim_until = now + 0.25;
+        }
         result
     }
 
@@ -332,7 +339,7 @@ impl App {
     }
 
     fn update_timer(&mut self) {
-        let want = self.any_animating();
+        let want = self.any_animating() || self.now() < self.anim_until;
         if want && !self.timer_on {
             unsafe { SetTimer(self.hwnd, ANIM_TIMER, 16, None) };
             self.timer_on = true;

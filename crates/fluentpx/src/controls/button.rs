@@ -42,7 +42,7 @@ pub struct Button {
     pub interaction: Interaction,
     rect: Rect,
     bg: ColorTransition,
-    last_state: VisualState,
+    initialized: bool,
 }
 
 impl Button {
@@ -53,7 +53,7 @@ impl Button {
             interaction: Interaction::default(),
             rect: Rect::default(),
             bg: ColorTransition::instant(Color::TRANSPARENT),
-            last_state: VisualState::Normal,
+            initialized: false,
         }
     }
 
@@ -141,13 +141,15 @@ impl Widget for Button {
         let t = ctx.tokens;
         let vs = self.interaction.visual_state();
 
-        // 背景过渡：状态变化时朝新背景色线性过渡（83ms）。
-        if vs != self.last_state {
-            self.bg.retarget(self.bg_for(t, vs), ctx.now, BG_TRANSITION);
-            self.last_state = vs;
-        } else if self.bg.dur == 0.0 && self.bg.to == Color::TRANSPARENT {
-            // 首帧初始化为当前状态色，避免从透明渐入。
-            self.bg = ColorTransition::instant(self.bg_for(t, vs));
+        // 每帧按「当前状态 + 当前主题」重新求目标背景色：目标一变就过渡过去（83ms）。
+        // 这样既覆盖交互状态切换（hover/press/release/leave 后恢复），也覆盖主题切换
+        // （token 变化时即使 vs 未变也会重新着色），避免缓存的旧色卡住不恢复。
+        let target = self.bg_for(t, vs);
+        if !self.initialized {
+            self.bg = ColorTransition::instant(target);
+            self.initialized = true;
+        } else if target != self.bg.to {
+            self.bg.retarget(target, ctx.now, BG_TRANSITION);
         }
         let bg = self.bg.value(ctx.now);
         let r = self.rect;
