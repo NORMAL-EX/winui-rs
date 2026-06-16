@@ -6,7 +6,7 @@
 //! * NavigationViewItem 高 ~40，选中左侧 accent 指示条（约 3×16），hover `SubtleFillColorSecondary`
 //! 为在画廊里演示，整体放在一个带边框的盒子里（左窗格 + 右内容区）。
 
-use crate::anim::{ease_out, lerp};
+use crate::anim::{cubic_bezier, ease_out, lerp};
 use crate::typography::TextStyle;
 use crate::widget::*;
 
@@ -19,6 +19,11 @@ const LABEL_X: f32 = 48.0;
 const ANIM_DUR: f64 = 0.2;
 const IND_W: f32 = 3.0;
 const IND_H: f32 = 16.0;
+// 选中指示条动画（源码 PlayIndicatorAnimations）：总 600ms，前缘 0.333 到位、后缘缓出。
+const SEL_DUR: f64 = 0.6;
+// 页面进入动画（Entrance/Slide）：下移淡入。
+const PAGE_DUR: f64 = 0.3;
+const PAGE_OFFSET: f32 = 16.0;
 
 pub struct NavItem {
     pub glyph: char,
@@ -34,6 +39,9 @@ pub struct NavigationView {
     anim_from: f32,
     anim_to: f32,
     anim_start: f64,
+    // 选中指示条 + 页面切换动画
+    prev_selected: usize,
+    sel_start: f64,
 }
 
 impl NavigationView {
@@ -48,6 +56,8 @@ impl NavigationView {
             anim_from: w,
             anim_to: w,
             anim_start: -1.0,
+            prev_selected: selected,
+            sel_start: -1.0,
         }
     }
 
@@ -123,42 +133,51 @@ impl Widget for NavigationView {
         let ham = Rect { x: tr.x + ICON_CX - 8.0, y: tr.center_y() - 8.0, w: 16.0, h: 16.0 };
         let _ = ctx.painter.draw_icon('\u{E700}', 16.0, ham, t.text_primary);
 
-        // 导航项
+        // 导航项（背景 / hover / 图标 / 标签）——选中指示条单独做动画绘制。
         for i in 0..self.items.len() {
             let r = self.item_rect(i, pane_w);
             let selected = i == self.selected;
             let hovered = self.hovered == Some(i as i32);
-            if selected {
-                ctx.painter.fill_rounded_rect(Rect { x: r.x + 4.0, y: r.y + 2.0, w: r.w - 8.0, h: r.h - 4.0 }, 4.0, t.subtle_fill_secondary);
-                let ind = Rect { x: r.x + 2.0, y: r.center_y() - IND_H / 2.0, w: IND_W, h: IND_H };
-                ctx.painter.fill_rounded_rect(ind, 1.5, t.accent_fill_default());
-            } else if hovered {
+            if selected || hovered {
                 ctx.painter.fill_rounded_rect(Rect { x: r.x + 4.0, y: r.y + 2.0, w: r.w - 8.0, h: r.h - 4.0 }, 4.0, t.subtle_fill_secondary);
             }
-            // 图标
             let icon = Rect { x: r.x + ICON_CX - 8.0, y: r.center_y() - 8.0, w: 16.0, h: 16.0 };
             let _ = ctx.painter.draw_icon(self.items[i].glyph, 16.0, icon, t.text_primary);
-            // 标签（展开时淡入）
             if open_amt > 0.05 {
                 let label_rect = Rect { x: r.x + LABEL_X, y: r.y, w: (r.w - LABEL_X - 8.0).max(0.0), h: r.h };
                 let _ = ctx.painter.draw_text_leading(&self.items[i].label, TextStyle::BODY, label_rect, t.text_primary.with_opacity(open_amt));
             }
         }
 
-        // 右侧内容区
+        // 选中指示条：拉伸滑动（源码 PlayIndicatorAnimations：前缘快、后缘缓，中途拉伸）。
+        let cur_c = self.item_rect(self.selected, pane_w).center_y();
+        let prev_c = self.item_rect(self.prev_selected, pane_w).center_y();
+        let (top, bot) = indicator_edges(self.sel_start, prev_c, cur_c, now);
+        let ind = Rect { x: self.rect.x + 2.0, y: top, w: IND_W, h: (bot - top).max(1.0) };
+        ctx.painter.fill_rounded_rect(ind, IND_W / 2.0, t.accent_fill_default());
+
+        // 右侧内容区：页面进入动画（Entrance：下移 + 淡入），裁剪避免溢出。
         let content = Rect { x: self.rect.x + pane_w + 1.0, y: self.rect.y, w: (self.rect.w - pane_w - 1.0).max(0.0), h: self.rect.h };
+        ctx.painter.push_clip(content);
+        let pp = if self.sel_start < 0.0 {
+            1.0
+        } else {
+            ease_out(((now - self.sel_start) / PAGE_DUR).clamp(0.0, 1.0) as f32)
+        };
+        let dy = (1.0 - pp) * PAGE_OFFSET;
         let _ = ctx.painter.draw_text_leading(
             &self.items[self.selected].label,
             TextStyle::SUBTITLE,
-            Rect { x: content.x + 24.0, y: content.y + 24.0, w: content.w - 48.0, h: 32.0 },
-            t.text_primary,
+            Rect { x: content.x + 24.0, y: content.y + 24.0 + dy, w: content.w - 48.0, h: 32.0 },
+            t.text_primary.with_opacity(pp),
         );
         let _ = ctx.painter.draw_text_leading(
-            "这是导航内容区。点击左侧汉堡按钮 ☰ 可展开/收缩导航窗格。",
+            "这是导航内容区。点左侧汉堡 ☰ 可展开/收缩；切换项有指示条滑动 + 页面进入动画。",
             TextStyle::BODY,
-            Rect { x: content.x + 24.0, y: content.y + 64.0, w: content.w - 48.0, h: 24.0 },
-            t.text_secondary,
+            Rect { x: content.x + 24.0, y: content.y + 64.0 + dy, w: content.w - 48.0, h: 24.0 },
+            t.text_secondary.with_opacity(pp),
         );
+        ctx.painter.pop_clip();
     }
 
     fn on_event(&mut self, ev: InputEvent, now: f64) -> EventResult {
@@ -201,7 +220,12 @@ impl Widget for NavigationView {
                 } else {
                     for i in 0..self.items.len() {
                         if self.item_rect(i, pane_w).contains(p) {
-                            self.selected = i;
+                            if i != self.selected {
+                                self.prev_selected = self.selected;
+                                self.selected = i;
+                                self.sel_start = now; // 触发指示条滑动 + 页面进入动画
+                                animating = true;
+                            }
                             redraw = true;
                             break;
                         }
@@ -214,10 +238,38 @@ impl Widget for NavigationView {
     }
 
     fn is_animating(&self, now: f64) -> bool {
-        self.anim_start >= 0.0 && (now - self.anim_start) < ANIM_DUR
+        (self.anim_start >= 0.0 && (now - self.anim_start) < ANIM_DUR)
+            || (self.sel_start >= 0.0 && (now - self.sel_start) < SEL_DUR)
     }
 
     fn accessible_role(&self) -> AccessibleRole {
         AccessibleRole::List
+    }
+}
+
+/// 选中指示条上下边随时间的位置（拉伸滑动，源码 PlayIndicatorAnimations）。
+fn indicator_edges(sel_start: f64, prev_c: f32, cur_c: f32, now: f64) -> (f32, f32) {
+    let old_top = prev_c - IND_H / 2.0;
+    let old_bot = prev_c + IND_H / 2.0;
+    let new_top = cur_c - IND_H / 2.0;
+    let new_bot = cur_c + IND_H / 2.0;
+    if sel_start < 0.0 {
+        return (new_top, new_bot);
+    }
+    let t = ((now - sel_start) / SEL_DUR).clamp(0.0, 1.0) as f32;
+    if t >= 1.0 {
+        return (new_top, new_bot);
+    }
+    // 前缘：~0.333 到位（frame1 缓动）；后缘：全程缓出（frame2 缓动）。
+    let lead = cubic_bezier(0.9, 0.1, 1.0, 0.2, (t / 0.333).min(1.0));
+    let trail = cubic_bezier(0.1, 0.9, 0.2, 1.0, t);
+    if cur_c >= prev_c {
+        let bottom = lerp(old_bot, new_bot, lead); // 下移：底边领先
+        let top = lerp(old_top, new_top, trail);
+        (top, bottom)
+    } else {
+        let top = lerp(old_top, new_top, lead); // 上移：顶边领先
+        let bottom = lerp(old_bot, new_bot, trail);
+        (top, bottom)
     }
 }
