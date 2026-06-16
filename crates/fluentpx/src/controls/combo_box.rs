@@ -20,7 +20,7 @@ use crate::widget::*;
 const BOX_H: f32 = 32.0;
 const CORNER: f32 = 4.0;
 const BORDER: f32 = 1.0;
-const PAD_L: f32 = 12.0;
+const PAD_L: f32 = 11.0; // ComboBoxItemThemePadding 左 = 11
 const CHEVRON_SIZE: f32 = 12.0;
 const CHEVRON_RIGHT: f32 = 14.0;
 const POPUP_CORNER: f32 = 8.0;
@@ -125,12 +125,12 @@ impl Widget for ComboBox {
             return;
         }
         let t = ctx.tokens;
-        // 开合动画：透明度 + 纵向位移（与 Menu 一致的弹出观感）。
+        // 开合动画：纵向裁剪揭示（从顶向下「展开」）+ 轻微淡入，近似 flyout 揭示。
         let prog = ease_out(((ctx.now - self.open_start) / OPEN_DUR).clamp(0.0, 1.0) as f32);
-        let dy = (1.0 - prog) * -8.0;
-        let alpha = prog;
-        let base = self.popup_rect();
-        let p = Rect { y: base.y + dy, ..base };
+        let alpha = (prog * 1.6).min(1.0);
+        let p = self.popup_rect();
+        let reveal_h = (p.h * prog).max(1.0);
+        ctx.painter.push_clip(Rect { x: p.x - 4.0, y: p.y, w: p.w + 8.0, h: reveal_h });
 
         // 阴影近似
         ctx.painter.fill_rounded_rect(Rect { y: p.y + 2.0, ..p }, POPUP_CORNER, Color::hex("#30000000").with_opacity(alpha));
@@ -139,8 +139,7 @@ impl Widget for ComboBox {
         ctx.painter.stroke_inner(p, POPUP_CORNER, t.surface_stroke_flyout.with_opacity(alpha), 1.0);
 
         for i in 0..self.items.len() {
-            let mut ir = self.popup_item_rect(i);
-            ir.y += dy;
+            let ir = self.popup_item_rect(i);
             let selected = i == self.selected;
             let hovered = self.hovered_item == Some(i);
             let bg = if selected && hovered {
@@ -160,6 +159,7 @@ impl Widget for ComboBox {
             let text_rect = Rect { x: ir.x + PAD_L, y: ir.y, w: ir.w - PAD_L - 8.0, h: ir.h };
             let _ = ctx.painter.draw_text_leading(&self.items[i], TextStyle::BODY, text_rect, t.text_primary.with_opacity(alpha));
         }
+        ctx.painter.pop_clip();
     }
 
     fn on_event(&mut self, ev: InputEvent, now: f64) -> EventResult {

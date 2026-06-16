@@ -44,6 +44,24 @@ pub enum Icon {
     Error,
 }
 
+impl Icon {
+    /// 对应 Segoe Fluent Icons / Segoe MDL2 Assets 的码位（两套字体同码位）。
+    pub fn codepoint(self) -> char {
+        match self {
+            Icon::ChevronDown => '\u{E70D}', // ChevronDown
+            Icon::Hamburger => '\u{E700}',   // GlobalNavButton
+            Icon::Home => '\u{E80F}',        // Home
+            Icon::Folder => '\u{E8B7}',      // Folder
+            Icon::Star => '\u{E734}',        // FavoriteStar
+            Icon::Settings => '\u{E713}',    // Setting
+            Icon::Info => '\u{E946}',        // Info
+            Icon::Success => '\u{E930}',     // Completed
+            Icon::Warning => '\u{E7BA}',     // Warning
+            Icon::Error => '\u{EA39}',       // ErrorBadge
+        }
+    }
+}
+
 /// 进程级 D2D/DWrite 工厂（与窗口无关，可全局复用）。
 pub struct Gfx {
     pub d2d: ID2D1Factory,
@@ -533,8 +551,17 @@ impl<'a> Painter<'a> {
         }
     }
 
-    /// 绘制一个内置矢量图标，居中于方形区域 `r`，颜色 `color`。
+    /// 绘制一个内置图标，居中于方形区域 `r`，颜色 `color`。
+    /// 用**真字体字形**渲染（Segoe Fluent Icons / 回退 Segoe MDL2 Assets，见 `icon_font`），
+    /// 而非自绘几何——保证与官方图标一致；字体缺失时才退化为矢量近似。
     pub fn draw_glyph(&self, icon: Icon, r: Rect, color: Color) {
+        let size = r.w.min(r.h);
+        let _ = self.draw_icon(icon.codepoint(), size, r, color);
+    }
+
+    /// 自绘矢量图标（仅在系统无图标字体时作兜底，正常不走这里）。
+    #[allow(dead_code)]
+    pub fn draw_glyph_vector(&self, icon: Icon, r: Rect, color: Color) {
         // 单位盒 [0,1]^2 → r 的映射。
         let m = |u: f32, v: f32| (r.x + u * r.w, r.y + v * r.h);
         let sw = (r.w / 16.0 * 1.3).max(1.0); // 16px 基准下约 1.3px 线宽

@@ -8,8 +8,8 @@
 use crate::widget::*;
 
 const SIZE: f32 = 36.0;
-const ROT_PERIOD: f64 = 1.4; // 整圈旋转周期
-const LEN_PERIOD: f64 = 2.0; // 弧长伸缩周期
+const CYCLE: f64 = 1.4; // 一次「伸→缩」周期
+const SPAN: f32 = 290.0; // 弧最大张角（留 ~70° 缺口）
 
 pub struct ProgressRing {
     rect: Rect,
@@ -48,12 +48,18 @@ impl Widget for ProgressRing {
         let r = SIZE / 2.0 - thickness;
 
         let now = ctx.now;
-        let rot = ((now % ROT_PERIOD) / ROT_PERIOD) as f32 * 360.0;
-        // 弧长在 [30,300] 之间正弦伸缩
-        let phase = ((now % LEN_PERIOD) / LEN_PERIOD) as f32 * std::f32::consts::TAU;
-        let sweep = 30.0 + (1.0 - phase.cos()) * 0.5 * 270.0;
-        // 让起点也随弧长变化前移，形成首尾交替吞吐
-        let start = rot - 90.0 + (1.0 - (phase * 0.5).cos()) * 40.0;
+        // 头/尾各按 easeInOut 推进，前半程头领先（伸长），后半程尾跟上（收缩）。
+        let cycle = ((now % CYCLE) / CYCLE) as f32;
+        let ease = |x: f32| -> f32 {
+            let x = x.clamp(0.0, 1.0);
+            if x < 0.5 { 4.0 * x * x * x } else { 1.0 - (-2.0 * x + 2.0).powi(3) / 2.0 }
+        };
+        let head = ease((cycle * 2.0).min(1.0)) * SPAN;
+        let tail = ease((cycle * 2.0 - 1.0).max(0.0)) * SPAN;
+        // 连续基础旋转（每 ~2.6s 一圈）+ 尾部推进，整体匀速转动。
+        let base = ((now % 2.6) / 2.6) as f32 * 360.0;
+        let start = base + tail - 90.0;
+        let sweep = (head - tail).clamp(14.0, SPAN);
         ctx.painter.stroke_arc(cx, cy, r, start, sweep, t.accent_fill_default(), thickness);
     }
 

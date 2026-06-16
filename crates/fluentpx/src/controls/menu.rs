@@ -15,8 +15,9 @@ const BTN_H: f32 = 32.0;
 const CORNER: f32 = 4.0;
 const BORDER: f32 = 1.0;
 const POPUP_CORNER: f32 = 8.0;
-const ITEM_H: f32 = 32.0;
-const POPUP_VPAD: f32 = 4.0;
+const ITEM_H: f32 = 36.0; // MenuFlyoutItemThemePadding 11,8,11,9 → 20+16≈36
+const POPUP_VPAD: f32 = 2.0; // MenuFlyoutPresenterThemePadding 0,2,0,2
+const ITEM_PAD_L: f32 = 11.0;
 const POPUP_W: f32 = 200.0;
 const OPEN_DUR: f64 = 0.15;
 
@@ -106,22 +107,19 @@ impl Widget for Menu {
             return;
         }
         let t = ctx.tokens;
-        // 打开进度：透明度 + 纵向位移
+        // 开合动画：纵向裁剪揭示（从顶向下「展开」）+ 轻微淡入。
         let prog = ease_out(((ctx.now - self.open_start) / OPEN_DUR).clamp(0.0, 1.0) as f32);
-        let dy = (1.0 - prog) * -8.0;
-        let alpha = prog;
+        let alpha = (prog * 1.6).min(1.0);
+        let p = self.popup_rect();
+        let reveal_h = (p.h * prog).max(1.0);
+        ctx.painter.push_clip(Rect { x: p.x - 4.0, y: p.y, w: p.w + 8.0, h: reveal_h });
 
-        let base = self.popup_rect();
-        let p = Rect { y: base.y + dy, ..base };
-
-        // 阴影 + 背景 + 边框（整体按 alpha 淡入）
         ctx.painter.fill_rounded_rect(Rect { y: p.y + 2.0, ..p }, POPUP_CORNER, Color::hex("#30000000").with_opacity(alpha));
         ctx.painter.fill_rounded_rect(p, POPUP_CORNER, t.solid_bg_tertiary.with_opacity(alpha));
         ctx.painter.stroke_inner(p, POPUP_CORNER, t.surface_stroke_flyout.with_opacity(alpha), 1.0);
 
         for i in 0..self.items.len() {
-            let mut ir = self.popup_item_rect(i);
-            ir.y += dy;
+            let ir = self.popup_item_rect(i);
             if self.hovered_item == Some(i) {
                 ctx.painter.fill_rounded_rect(
                     Rect { x: ir.x + 4.0, y: ir.y + 1.0, w: ir.w - 8.0, h: ir.h - 2.0 },
@@ -129,9 +127,10 @@ impl Widget for Menu {
                     t.subtle_fill_secondary.with_opacity(alpha),
                 );
             }
-            let text_rect = Rect { x: ir.x + 12.0, y: ir.y, w: ir.w - 20.0, h: ir.h };
+            let text_rect = Rect { x: ir.x + ITEM_PAD_L, y: ir.y, w: ir.w - ITEM_PAD_L - 8.0, h: ir.h };
             let _ = ctx.painter.draw_text_leading(&self.items[i], TextStyle::BODY, text_rect, t.text_primary.with_opacity(alpha));
         }
+        ctx.painter.pop_clip();
     }
 
     fn on_event(&mut self, ev: InputEvent, now: f64) -> EventResult {

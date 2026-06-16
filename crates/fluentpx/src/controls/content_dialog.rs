@@ -137,23 +137,30 @@ impl Widget for ContentDialog {
         let body_rect = Rect { x: d.x + PAD, y: title_rect.bottom() + 8.0, w: d.w - PAD * 2.0, h: 40.0 };
         let _ = ctx.painter.draw_text_leading(&self.body, TextStyle::BODY, body_rect, t.text_secondary.with_opacity(alpha));
 
-        // 底部两个按钮命中区用最终矩形（不随缩放抖动）。
-        let row_y = d_final.bottom() - PAD - BTN_H;
-        let total_w = d_final.w - PAD * 2.0;
-        let bw = (total_w - BTN_SPACING) / 2.0;
-        self.primary_rect = Rect { x: d_final.x + PAD, y: row_y, w: bw, h: BTN_H };
-        self.close_rect = Rect { x: self.primary_rect.right() + BTN_SPACING, y: row_y, w: bw, h: BTN_H };
+        // 命中区用最终矩形（不随入场缩放抖动）；绘制用缩放后的 d（按钮随卡片一起缩放）。
+        let hit_row_y = d_final.bottom() - PAD - BTN_H;
+        let hit_total = d_final.w - PAD * 2.0;
+        let hit_bw = (hit_total - BTN_SPACING) / 2.0;
+        self.primary_rect = Rect { x: d_final.x + PAD, y: hit_row_y, w: hit_bw, h: BTN_H };
+        self.close_rect = Rect { x: self.primary_rect.right() + BTN_SPACING, y: hit_row_y, w: hit_bw, h: BTN_H };
+
+        let row_y = d.bottom() - PAD - BTN_H * scale;
+        let total_w = d.w - PAD * 2.0 * scale;
+        let bw = (total_w - BTN_SPACING * scale) / 2.0;
+        let bh = BTN_H * scale;
+        let primary_draw = Rect { x: d.x + PAD * scale, y: row_y, w: bw, h: bh };
+        let close_draw = Rect { x: primary_draw.right() + BTN_SPACING * scale, y: row_y, w: bw, h: bh };
 
         // 主按钮（Accent）
         let pbg = if self.hover_primary { t.accent_fill_secondary() } else { t.accent_fill_default() };
-        ctx.painter.fill_rounded_rect(self.primary_rect, 4.0, pbg.with_opacity(alpha));
-        let _ = ctx.painter.draw_text_centered(&self.primary_text, TextStyle::BODY, self.primary_rect, t.text_on_accent_primary.with_opacity(alpha));
+        ctx.painter.fill_rounded_rect(primary_draw, 4.0, pbg.with_opacity(alpha));
+        let _ = ctx.painter.draw_text_centered(&self.primary_text, TextStyle::BODY, primary_draw, t.text_on_accent_primary.with_opacity(alpha));
 
         // 次按钮（Standard）
         let cbg = if self.hover_close { t.control_fill_secondary } else { t.control_fill_default };
-        ctx.painter.fill_rounded_rect(self.close_rect.inset(BORDER), 3.0, cbg.with_opacity(alpha));
-        let _ = ctx.painter.stroke_inner(self.close_rect, 4.0, t.stroke_default.with_opacity(alpha), 1.0);
-        let _ = ctx.painter.draw_text_centered(&self.close_text, TextStyle::BODY, self.close_rect, t.text_primary.with_opacity(alpha));
+        ctx.painter.fill_rounded_rect(close_draw.inset(BORDER), 3.0, cbg.with_opacity(alpha));
+        ctx.painter.stroke_inner(close_draw, 4.0, t.stroke_default.with_opacity(alpha), 1.0);
+        let _ = ctx.painter.draw_text_centered(&self.close_text, TextStyle::BODY, close_draw, t.text_primary.with_opacity(alpha));
     }
 
     fn on_event(&mut self, ev: InputEvent, now: f64) -> EventResult {
