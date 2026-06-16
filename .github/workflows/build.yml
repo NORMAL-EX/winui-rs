@@ -29,8 +29,8 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
 
-      - name: Build gallery (release)
-        run: cargo build --release -p gallery
+      - name: Build gallery + cloud-mgr (release)
+        run: cargo build --release -p gallery -p cloud-mgr
 
       - name: Run library tests
         run: cargo test -p fluentpx --release
@@ -42,6 +42,13 @@ jobs:
           path: target/release/gallery.exe
           if-no-files-found: error
 
+      - name: Upload cloud-mgr.exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-mgr-exe
+          path: target/release/cloud-mgr.exe
+          if-no-files-found: error
+
       # 每次推 main 自动发布/更新 'latest' Release，提供公开免登录直链：
       # https://github.com/NORMAL-EX/winui-rs/releases/download/latest/gallery.exe
       - name: Publish 'latest' release with gallery.exe
@@ -49,9 +56,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Latest gallery build
+          name: Latest build
           prerelease: true
-          files: target/release/gallery.exe
+          files: |
+            target/release/gallery.exe
+            target/release/cloud-mgr.exe
 
   release:
     needs: build

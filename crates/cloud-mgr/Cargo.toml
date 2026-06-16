@@ -1,0 +1,18 @@
+[package]
+name = "cloud-mgr"
+description = "Cloud-PE 插件市场/管理器 —— 从 egui 迁移到 fluentpx（纯 Rust + Direct2D 复刻 WinUI 3）。"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "cloud-mgr"
+path = "src/main.rs"
+
+[dependencies]
+fluentpx = { path = "../fluentpx" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dirs = "5.0"
+anyhow = "1.0"

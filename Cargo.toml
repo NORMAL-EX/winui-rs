@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/fluentpx", "crates/gallery"]
+members = ["crates/fluentpx", "crates/gallery", "crates/cloud-mgr"]
 
 [workspace.package]
 version = "0.1.0"
