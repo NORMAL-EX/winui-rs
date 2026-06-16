@@ -260,16 +260,22 @@ fn indicator_edges(sel_start: f64, prev_c: f32, cur_c: f32, now: f64) -> (f32, f
     if t >= 1.0 {
         return (new_top, new_bot);
     }
-    // 前缘：~0.333 到位（frame1 缓动）；后缘：全程缓出（frame2 缓动）。
-    let lead = cubic_bezier(0.9, 0.1, 1.0, 0.2, (t / 0.333).min(1.0));
-    let trail = cubic_bezier(0.1, 0.9, 0.2, 1.0, t);
+    // 两段式（对应源码 Offset 在 0.333 步进 + Scale 先涨后落）：
+    //   阶段1 (0~0.333)：领先边伸向目标(frame1 缓动)，拖尾边按住不动 → 拉长；
+    //   阶段2 (0.333~1)：领先边到位按住，拖尾边收向目标(frame2 缓动) → 收回。
+    let p1 = (t / 0.333).min(1.0);
+    let p2 = ((t - 0.333) / 0.667).clamp(0.0, 1.0);
+    let stretch = cubic_bezier(0.9, 0.1, 1.0, 0.2, p1); // frame1
+    let settle = cubic_bezier(0.1, 0.9, 0.2, 1.0, p2); // frame2
     if cur_c >= prev_c {
-        let bottom = lerp(old_bot, new_bot, lead); // 下移：底边领先
-        let top = lerp(old_top, new_top, trail);
+        // 下移：底边领先、顶边收尾
+        let bottom = lerp(old_bot, new_bot, stretch);
+        let top = lerp(old_top, new_top, settle);
         (top, bottom)
     } else {
-        let top = lerp(old_top, new_top, lead); // 上移：顶边领先
-        let bottom = lerp(old_bot, new_bot, trail);
+        // 上移：顶边领先、底边收尾
+        let top = lerp(old_top, new_top, stretch);
+        let bottom = lerp(old_bot, new_bot, settle);
         (top, bottom)
     }
 }

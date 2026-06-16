@@ -125,7 +125,7 @@ impl Widget for ContentDialog {
         };
         // 卡片
         ctx.painter.fill_rounded_rect(d, CORNER, t.solid_bg_base.with_opacity(alpha));
-        ctx.painter.stroke_inner(d, CORNER, t.strong_stroke_default.with_opacity(alpha), BORDER);
+        ctx.painter.stroke_inner(d, CORNER, t.surface_stroke_default.with_opacity(alpha), BORDER);
 
         // 标题 + 正文
         let title_rect = Rect { x: d.x + PAD, y: d.y + PAD, w: d.w - PAD * 2.0, h: 28.0 };

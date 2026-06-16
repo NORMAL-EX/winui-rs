@@ -317,10 +317,11 @@ impl App {
         let scale = self.scale();
         let now = self.now();
         let dwrite = self.gfx.dwrite.clone();
+        let icon_font = self.gfx.icon_font.clone();
 
         let surface = self.surface.as_mut().unwrap();
         let recreate = (|| -> Result<bool> {
-            let mut painter = surface.begin(&dwrite, scale)?;
+            let mut painter = surface.begin(&dwrite, &icon_font, scale)?;
             painter.clear(tokens.solid_bg_base);
 
             // 页面标题

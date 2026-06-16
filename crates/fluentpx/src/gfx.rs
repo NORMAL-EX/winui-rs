@@ -33,6 +33,29 @@ pub const TEXT_ENHANCED_CONTRAST: f32 = 0.5;
 pub struct Gfx {
     pub d2d: ID2D1Factory,
     pub dwrite: IDWriteFactory,
+    /// 实际使用的图标字体族（Segoe Fluent Icons / Segoe MDL2 Assets）。
+    pub icon_font: String,
+}
+
+/// 查询系统字体集中是否存在某字体族。
+fn font_family_exists(dwrite: &IDWriteFactory, name: &str) -> bool {
+    unsafe {
+        let mut collection: Option<IDWriteFontCollection> = None;
+        if dwrite.GetSystemFontCollection(&mut collection, false).is_err() {
+            return false;
+        }
+        let Some(collection) = collection else { return false };
+        let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut index = 0u32;
+        let mut exists = windows::Win32::Foundation::BOOL(0);
+        if collection
+            .FindFamilyName(windows::core::PCWSTR(wide.as_ptr()), &mut index, &mut exists)
+            .is_err()
+        {
+            return false;
+        }
+        exists.as_bool()
+    }
 }
 
 impl Gfx {
@@ -41,7 +64,13 @@ impl Gfx {
             let d2d: ID2D1Factory =
                 D2D1CreateFactory::<ID2D1Factory>(D2D1_FACTORY_TYPE_SINGLE_THREADED, None)?;
             let dwrite: IDWriteFactory = DWriteCreateFactory::<IDWriteFactory>(DWRITE_FACTORY_TYPE_SHARED)?;
-            Ok(Gfx { d2d, dwrite })
+            // 图标字体：优先 Win11 的「Segoe Fluent Icons」，缺失（如 Win10）回退「Segoe MDL2 Assets」。
+            let icon_font = if font_family_exists(&dwrite, "Segoe Fluent Icons") {
+                "Segoe Fluent Icons".to_string()
+            } else {
+                "Segoe MDL2 Assets".to_string()
+            };
+            Ok(Gfx { d2d, dwrite, icon_font })
         }
     }
 
@@ -100,7 +129,7 @@ impl Surface {
     }
 
     /// 开一帧。返回的 [`Painter`] 在 drop 时不自动结束，调用方需配对 [`Painter::end`]。
-    pub fn begin<'a>(&'a mut self, dwrite: &'a IDWriteFactory, scale: f32) -> Result<Painter<'a>> {
+    pub fn begin<'a>(&'a mut self, dwrite: &'a IDWriteFactory, icon_font: &'a str, scale: f32) -> Result<Painter<'a>> {
         if self.brush.is_none() {
             let b = unsafe {
                 self.rt.CreateSolidColorBrush(&Color::TRANSPARENT.d2d(), None)?
@@ -112,6 +141,7 @@ impl Surface {
             rt: &self.rt,
             dwrite,
             brush: self.brush.as_ref().unwrap(),
+            icon_font,
             scale,
         })
     }
@@ -122,6 +152,7 @@ pub struct Painter<'a> {
     rt: &'a ID2D1HwndRenderTarget,
     dwrite: &'a IDWriteFactory,
     brush: &'a ID2D1SolidColorBrush,
+    icon_font: &'a str,
     scale: f32,
 }
 
@@ -334,7 +365,7 @@ impl<'a> Painter<'a> {
     /// 用 `Segoe MDL2 Assets`（Win10/11 均自带；Win11 独有的 `Segoe Fluent Icons`
     /// 在 Win10 缺失会渲染成缺字方块，故统一用 MDL2，码位兼容）。`size` 为逻辑像素字号。
     pub fn draw_icon(&self, glyph: char, size: f32, r: Rect, color: Color) -> Result<()> {
-        let family = windows::core::HSTRING::from("Segoe MDL2 Assets");
+        let family = windows::core::HSTRING::from(self.icon_font);
         let locale = windows::core::HSTRING::from("en-US");
         let format = unsafe {
             self.dwrite.CreateTextFormat(
