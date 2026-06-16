@@ -5,7 +5,10 @@
 
 mod app;
 mod config;
+mod downloader;
 mod mode;
+mod plugins;
+mod utils;
 
 use fluentpx::host::{run, WindowOptions};
 use mode::PluginMode;

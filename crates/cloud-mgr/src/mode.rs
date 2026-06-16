@@ -37,6 +37,15 @@ impl PluginMode {
         }
     }
 
+    pub fn get_disabled_extension(&self) -> &str {
+        match self {
+            PluginMode::CloudPE => "CBK",
+            PluginMode::HotPE => "hpm.off",
+            PluginMode::Edgeless => "7zf",
+            _ => "",
+        }
+    }
+
     pub fn get_plugin_market_name(&self) -> &str {
         match self {
             PluginMode::HotPE => "模块市场",
