@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -39,6 +41,17 @@ jobs:
           name: gallery-exe
           path: target/release/gallery.exe
           if-no-files-found: error
+
+      # 每次推 main 自动发布/更新 'latest' Release，提供公开免登录直链：
+      # https://github.com/NORMAL-EX/winui-rs/releases/download/latest/gallery.exe
+      - name: Publish 'latest' release with gallery.exe
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest gallery build
+          prerelease: true
+          files: target/release/gallery.exe
 
   release:
     needs: build
