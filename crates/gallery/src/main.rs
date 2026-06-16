@@ -19,7 +19,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
-use fluentpx::controls::{Button, Slider, ToggleSwitch};
+use fluentpx::controls::{
+    Button, ComboBox, ContentDialog, ListView, Slider, TabView, ToggleSwitch, ToolTip,
+};
 use fluentpx::gfx::{Gfx, Surface};
 use fluentpx::typography::TextStyle;
 use fluentpx::widget::Widget;
@@ -104,6 +106,43 @@ impl App {
                         s
                     }),
                 ],
+            },
+            Section {
+                title: "ListView".into(),
+                title_y: 0.0,
+                items: vec![Box::new(ListView::new(
+                    vec!["Apple".into(), "Banana".into(), "Cherry".into(), "Durian".into()],
+                    Some(1),
+                ))],
+            },
+            Section {
+                title: "TabView".into(),
+                title_y: 0.0,
+                items: vec![Box::new(TabView::new(
+                    vec!["Document 1".into(), "Document 2".into(), "Document 3".into()],
+                    0,
+                ))],
+            },
+            Section {
+                title: "ToolTip".into(),
+                title_y: 0.0,
+                items: vec![Box::new(ToolTip::new("Hover me", "这是一个 ToolTip 提示气泡"))],
+            },
+            Section {
+                title: "ComboBox".into(),
+                title_y: 0.0,
+                items: vec![Box::new(ComboBox::new(
+                    vec!["Small".into(), "Medium".into(), "Large".into(), "Extra Large".into()],
+                    1,
+                ))],
+            },
+            Section {
+                title: "ContentDialog".into(),
+                title_y: 0.0,
+                items: vec![Box::new(ContentDialog::new(
+                    "Save your work?",
+                    "你有未保存的更改，是否保存后继续？",
+                ))],
             },
         ];
         App {
@@ -206,10 +245,14 @@ impl App {
                 tokens.text_primary,
             );
 
-            let mut ctx = PaintCtx { painter: &mut painter, tokens: &tokens, dpi: self.dpi, now };
+            let viewport = fluentpx::Size {
+                w: self.size_px.0 as f32 / scale,
+                h: self.size_px.1 as f32 / scale,
+            };
+            let mut ctx = PaintCtx { painter: &mut painter, tokens: &tokens, dpi: self.dpi, now, viewport };
             self.theme_btn.paint(&mut ctx);
 
-            // 段落标题 + 控件（位置均由 relayout 计算）。
+            // 段落标题 + 控件主层（位置均由 relayout 计算）。
             for sec in &mut self.sections {
                 let _ = ctx.painter.draw_text_leading(
                     &sec.title,
@@ -219,6 +262,13 @@ impl App {
                 );
                 for item in &mut sec.items {
                     item.paint(&mut ctx);
+                }
+            }
+
+            // 覆盖层（ComboBox 下拉、ToolTip 气泡、ContentDialog 遮罩）置顶再画一遍。
+            for sec in &mut self.sections {
+                for item in &mut sec.items {
+                    item.paint_overlay(&mut ctx);
                 }
             }
 
@@ -239,6 +289,16 @@ impl App {
     fn dispatch(&mut self, ev: InputEvent) -> EventResult {
         let now = self.now();
         let mut result = EventResult::NONE;
+
+        // 模态捕获：若某控件处于模态（ComboBox 下拉 / ContentDialog 打开），
+        // 事件只派发给它，实现焦点捕获。
+        for sec in &mut self.sections {
+            for item in &mut sec.items {
+                if item.wants_modal() {
+                    return item.on_event(ev, now);
+                }
+            }
+        }
 
         self.theme_btn_was_pressed = self.theme_btn.interaction.pressed;
         result = result.or(self.theme_btn.on_event(ev, now));
