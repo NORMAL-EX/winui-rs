@@ -73,7 +73,7 @@ impl ComboBox {
 
 impl Widget for ComboBox {
     fn measure(&mut self, available: Size) -> Size {
-        Size { w: available.w.max(200.0), h: BOX_H }
+        Size { w: available.w.clamp(200.0, 300.0), h: BOX_H }
     }
 
     fn arrange(&mut self, rect: Rect) {

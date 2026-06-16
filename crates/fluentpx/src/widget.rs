@@ -95,6 +95,10 @@ pub enum InputEvent {
     PointerLeave,
     KeyDown(u32),
     KeyUp(u32),
+    /// 已翻译的字符输入（WM_CHAR），供 TextBox 等编辑控件使用。
+    Char(char),
+    /// 鼠标滚轮，正值向上。
+    Wheel(f32),
 }
 
 /// 事件处理结果：是否需要重绘，以及是否仍有动画在进行（需持续刷新）。
@@ -168,6 +172,12 @@ pub trait Widget {
     /// 是否正处于模态状态（如打开的 ComboBox 下拉 / ContentDialog）：
     /// 为 true 时宿主只把事件派发给本控件，实现焦点捕获。
     fn wants_modal(&self) -> bool {
+        false
+    }
+
+    /// 是否需要独占键盘/字符输入（如聚焦的 TextBox）：
+    /// 为 true 时宿主只把 KeyDown/Char 事件派发给本控件，避免空格等键误触其它控件。
+    fn wants_keyboard(&self) -> bool {
         false
     }
 

@@ -20,7 +20,8 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
 use fluentpx::controls::{
-    Button, ComboBox, ContentDialog, ListView, Slider, TabView, ToggleSwitch, ToolTip,
+    Button, ComboBox, ContentDialog, ListView, Menu, Slider, TabView, TextBox, ToggleSwitch,
+    ToolTip,
 };
 use fluentpx::gfx::{Gfx, Surface};
 use fluentpx::typography::TextStyle;
@@ -53,6 +54,15 @@ struct App {
     sections: Vec<Section>,
     /// 动画兜底时限：任何交互/重绘后持续刷新到此刻，保证过渡跑到静止帧。
     anim_until: f64,
+    /// 纵向滚动偏移（逻辑像素，>=0），由滚轮 / 拖动调整。
+    scroll_y: f32,
+    /// 排版后的内容总高（逻辑像素），用于滚动夹取。
+    content_height: f32,
+    // —— 触摸 / 鼠标拖动滚动 ——
+    pointer_down: bool,
+    dragging: bool,
+    drag_start_y: f32,
+    drag_start_scroll: f32,
 }
 
 impl App {
@@ -113,7 +123,16 @@ impl App {
                 title: "ListView".into(),
                 title_y: 0.0,
                 items: vec![Box::new(ListView::new(
-                    vec!["Apple".into(), "Banana".into(), "Cherry".into(), "Durian".into()],
+                    vec![
+                        "Apple".into(),
+                        "Banana".into(),
+                        "Cherry".into(),
+                        "Durian".into(),
+                        "Elderberry".into(),
+                        "Fig".into(),
+                        "Grape".into(),
+                        "Honeydew".into(),
+                    ],
                     Some(1),
                 ))],
             },
@@ -146,6 +165,22 @@ impl App {
                     "你有未保存的更改，是否保存后继续？",
                 ))],
             },
+            Section {
+                title: "TextBox（编辑框）".into(),
+                title_y: 0.0,
+                items: vec![
+                    Box::new(TextBox::new("请输入文本…")),
+                    Box::new(TextBox::new("Type here…")),
+                ],
+            },
+            Section {
+                title: "Menu（菜单）".into(),
+                title_y: 0.0,
+                items: vec![Box::new(Menu::new(
+                    "菜单",
+                    vec!["新建".into(), "打开".into(), "保存".into(), "另存为".into(), "退出".into()],
+                ))],
+            },
         ];
         App {
             gfx,
@@ -161,7 +196,18 @@ impl App {
             theme_btn_was_pressed: false,
             sections,
             anim_until: 0.0,
+            scroll_y: 0.0,
+            content_height: 0.0,
+            pointer_down: false,
+            dragging: false,
+            drag_start_y: 0.0,
+            drag_start_scroll: 0.0,
         }
+    }
+
+    /// 是否有控件处于模态（打开的 ComboBox/Menu/Dialog）——拖动滚动期间需避让。
+    fn any_modal(&self) -> bool {
+        self.sections.iter().any(|s| s.items.iter().any(|w| w.wants_modal()))
     }
 
     fn now(&self) -> f64 {
@@ -177,39 +223,56 @@ impl App {
         (self.size_px.0 as f32 / self.scale(), self.size_px.1 as f32 / self.scale())
     }
 
-    /// 重新布局：纵向分节流式排布，控件横向铺开。坐标全部逻辑像素。
+    /// 重新布局：按各控件**实测高度**纵向分节流式排布，控件横向铺开、超宽换行。
+    /// 同时烘焙滚动偏移 `scroll_y`，并计算内容总高 `content_height` 供滚动夹取。
     fn relayout(&mut self) {
         let (cw, _ch) = self.client_logical();
         let margin = 36.0;
-        let mut y = 28.0;
+        let avail_w = (cw - margin * 2.0).max(120.0);
 
-        // 主题切换按钮固定右上角。
+        // 主题切换按钮固定右上角（不随内容滚动）。
         let tb = self.theme_btn.measure(fluentpx::Size { w: cw, h: 32.0 });
         let tb_w = tb.w.max(120.0);
         self.theme_btn.arrange(Rect::new(cw - margin - tb_w, 24.0, tb_w, 32.0));
 
-        y += 40.0; // 给页面标题留白
+        // 内容起点（叠加滚动偏移）。HEADER_H 以下为可滚动内容区。
+        let content_top = 68.0;
+        let mut y = content_top - self.scroll_y;
         for sec in &mut self.sections {
             sec.title_y = y;
-            y += 36.0; // 段标题占位
+            y += 34.0; // 段标题高度
             let mut x = margin;
-            let row_top = y;
+            let mut row_top = y;
             let mut row_h: f32 = 0.0;
             for item in &mut sec.items {
-                let want = item.measure(fluentpx::Size { w: 240.0, h: 40.0 });
-                let w = want.w.max(if want.w < 60.0 { 120.0 } else { want.w });
+                let want = item.measure(fluentpx::Size { w: avail_w, h: 40.0 });
+                let w = want.w.min(avail_w).max(40.0);
                 let h = want.h.max(32.0);
-                if x + w > cw - margin && x > margin {
+                // 换行：本行已有内容且放不下。
+                if x > margin && x + w > cw - margin + 0.5 {
                     x = margin;
-                    y = row_top + row_h + 16.0;
+                    row_top += row_h + 12.0;
+                    row_h = 0.0;
                 }
-                let cy = y + (40.0 - h) / 2.0;
-                item.arrange(Rect::new(x, cy, w, h));
+                item.arrange(Rect::new(x, row_top, w, h));
                 x += w + 16.0;
-                row_h = row_h.max(40.0);
+                row_h = row_h.max(h);
             }
-            y = row_top + row_h + 28.0;
+            y = row_top + row_h + 26.0; // 段间距
         }
+        // 内容总高（换算回未滚动绝对坐标）+ 底部留白。
+        self.content_height = (y + self.scroll_y - content_top + 24.0).max(0.0);
+        // 夹取滚动量（窗口变大/内容变少后不至于过度滚动）。
+        let max = self.max_scroll();
+        if self.scroll_y > max {
+            self.scroll_y = max;
+        }
+    }
+
+    /// 当前允许的最大滚动量（内容高于可视区时为正）。
+    fn max_scroll(&self) -> f32 {
+        let (_, ch) = self.client_logical();
+        (self.content_height - (ch - 68.0)).max(0.0)
     }
 
     fn ensure_surface(&mut self) -> bool {
@@ -255,6 +318,9 @@ impl App {
             let mut ctx = PaintCtx { painter: &mut painter, tokens: &tokens, dpi: self.dpi, now, viewport };
             self.theme_btn.paint(&mut ctx);
 
+            // 内容区裁剪：滚动内容不糊到标题、也不溢出窗口底部。
+            let content_clip = Rect::new(0.0, 60.0, viewport.w, (viewport.h - 60.0).max(0.0));
+            ctx.painter.push_clip(content_clip);
             // 段落标题 + 控件主层（位置均由 relayout 计算）。
             for sec in &mut self.sections {
                 let _ = ctx.painter.draw_text_leading(
@@ -267,8 +333,9 @@ impl App {
                     item.paint(&mut ctx);
                 }
             }
+            ctx.painter.pop_clip();
 
-            // 覆盖层（ComboBox 下拉、ToolTip 气泡、ContentDialog 遮罩）置顶再画一遍。
+            // 覆盖层（ComboBox 下拉、ToolTip 气泡、ContentDialog 遮罩）置顶再画一遍（不裁剪）。
             for sec in &mut self.sections {
                 for item in &mut sec.items {
                     item.paint_overlay(&mut ctx);
@@ -292,6 +359,22 @@ impl App {
     fn dispatch(&mut self, ev: InputEvent) -> EventResult {
         let now = self.now();
         let mut result = EventResult::NONE;
+
+        // 键盘/字符独占：若有 TextBox 聚焦，KeyDown/Char 只发给它，避免误触其它控件。
+        if matches!(ev, InputEvent::Char(_) | InputEvent::KeyDown(_)) {
+            let has_kbd = self.sections.iter().any(|s| s.items.iter().any(|w| w.wants_keyboard()));
+            if has_kbd {
+                let mut r = EventResult::NONE;
+                for sec in &mut self.sections {
+                    for item in &mut sec.items {
+                        if item.wants_keyboard() {
+                            r = r.or(item.on_event(ev, now));
+                        }
+                    }
+                }
+                return r;
+            }
+        }
 
         // 模态捕获：若某控件处于模态（ComboBox 下拉 / ContentDialog 打开），
         // 事件只派发给它，实现焦点捕获。
@@ -390,6 +473,15 @@ fn lparam_point(lp: LPARAM, scale: f32) -> Point {
     Point { x: x / scale, y: y / scale }
 }
 
+/// 当前鼠标消息是否来自触摸 / 触控笔（用 GetMessageExtraInfo 签名判定）。
+/// 触摸点击没有「悬停」概念，抬起后需主动清除 hover，否则控件会卡在激活色。
+fn is_touch_or_pen() -> bool {
+    const SIGNATURE: usize = 0xFF51_5700;
+    const MASK: usize = 0xFFFF_FF00;
+    let extra = unsafe { GetMessageExtraInfo() };
+    (extra.0 as usize & MASK) == SIGNATURE
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_NCCREATE {
         let cs = lparam.0 as *const CREATESTRUCTW;
@@ -449,6 +541,22 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 app.tracking_mouse = true;
             }
             let p = lparam_point(lparam, app.scale());
+            // 拖动滚动：按下后纵向位移超阈值即进入滚动模式（非模态、内容可滚时）。
+            if app.pointer_down && !app.any_modal() {
+                if !app.dragging
+                    && (p.y - app.drag_start_y).abs() > 8.0
+                    && app.max_scroll() > 0.0
+                {
+                    app.dragging = true;
+                    let _ = app.dispatch(InputEvent::PointerLeave); // 取消控件的按下/悬停
+                }
+                if app.dragging {
+                    let max = app.max_scroll();
+                    app.scroll_y = (app.drag_start_scroll - (p.y - app.drag_start_y)).clamp(0.0, max);
+                    let _ = InvalidateRect(hwnd, None, false);
+                    return LRESULT(0);
+                }
+            }
             let r = app.dispatch(InputEvent::PointerMove(p));
             if r.redraw {
                 let _ = InvalidateRect(hwnd, None, false);
@@ -468,6 +576,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_LBUTTONDOWN => {
             let _ = SetCapture(hwnd);
             let p = lparam_point(lparam, app.scale());
+            app.pointer_down = true;
+            app.dragging = false;
+            app.drag_start_y = p.y;
+            app.drag_start_scroll = app.scroll_y;
             let r = app.dispatch(InputEvent::PointerDown(p));
             if r.redraw {
                 let _ = InvalidateRect(hwnd, None, false);
@@ -478,11 +590,43 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_LBUTTONUP => {
             let _ = ReleaseCapture();
             let p = lparam_point(lparam, app.scale());
-            let r = app.dispatch(InputEvent::PointerUp(p));
+            let was_dragging = app.dragging;
+            app.pointer_down = false;
+            app.dragging = false;
+            if was_dragging {
+                // 这是一次滚动手势，不是点按：不向控件派发 Up。
+                let _ = InvalidateRect(hwnd, None, false);
+                return LRESULT(0);
+            }
+            let mut r = app.dispatch(InputEvent::PointerUp(p));
+            // 触屏/触控笔：抬起后没有后续 move，主动清 hover 让控件回到静息色。
+            if is_touch_or_pen() {
+                r = r.or(app.dispatch(InputEvent::PointerLeave));
+            }
             if r.redraw {
                 let _ = InvalidateRect(hwnd, None, false);
             }
             app.update_timer();
+            LRESULT(0)
+        }
+        WM_MOUSEWHEEL => {
+            let delta = ((wparam.0 >> 16) & 0xffff) as i16 as f32 / 120.0;
+            let max = app.max_scroll();
+            let new = (app.scroll_y - delta * 48.0).clamp(0.0, max);
+            if (new - app.scroll_y).abs() > 0.01 {
+                app.scroll_y = new;
+                let _ = InvalidateRect(hwnd, None, false);
+            }
+            LRESULT(0)
+        }
+        WM_CHAR => {
+            if let Some(c) = char::from_u32(wparam.0 as u32) {
+                let r = app.dispatch(InputEvent::Char(c));
+                if r.redraw {
+                    let _ = InvalidateRect(hwnd, None, false);
+                }
+                app.update_timer();
+            }
             LRESULT(0)
         }
         WM_KEYDOWN => {

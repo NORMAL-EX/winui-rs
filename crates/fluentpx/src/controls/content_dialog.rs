@@ -64,8 +64,8 @@ impl ContentDialog {
 }
 
 impl Widget for ContentDialog {
-    fn measure(&mut self, available: Size) -> Size {
-        Size { w: available.w.max(200.0), h: BTN_H }
+    fn measure(&mut self, _available: Size) -> Size {
+        Size { w: 200.0, h: BTN_H }
     }
 
     fn arrange(&mut self, rect: Rect) {

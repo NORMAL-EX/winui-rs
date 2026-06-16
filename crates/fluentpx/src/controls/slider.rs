@@ -92,8 +92,8 @@ impl Slider {
 
 impl Widget for Slider {
     fn measure(&mut self, available: Size) -> Size {
-        // 高度取 thumb 直径以容纳；宽度自适应（默认给一个合理下限）。
-        Size { w: available.w.max(120.0), h: THUMB_OUTER_D }
+        // 高度取 thumb 直径以容纳；宽度自适应并夹在合理区间。
+        Size { w: available.w.clamp(160.0, 280.0), h: THUMB_OUTER_D }
     }
 
     fn arrange(&mut self, rect: Rect) {

@@ -6,8 +6,10 @@
 use windows::core::{Result, HSTRING};
 use windows::Win32::Graphics::DirectWrite::*;
 
-/// 主字体族（可变字体的 Text 光学尺寸变体）。DirectWrite 不存在时自动回退到 `Segoe UI`。
-pub const FONT_FAMILY: &str = "Segoe UI Variable Text";
+/// 主 UI 字体。按用户要求使用「微软雅黑 UI」，中英文均由其渲染（中文字形清晰）。
+/// 回退 `Segoe UI`。注：这会让拉丁字母不再是 WinUI 默认的 Segoe UI Variable，
+/// 属按需取舍；如需「拉丁=Segoe / 中文=雅黑」混排，可后续接 DirectWrite 自定义字体回退。
+pub const FONT_FAMILY: &str = "Microsoft YaHei UI";
 pub const FONT_FAMILY_FALLBACK: &str = "Segoe UI";
 
 /// 内容控件默认字号 `ControlContentThemeFontSize`。
@@ -42,7 +44,7 @@ pub fn create_text_format(
     scale: f32,
 ) -> Result<IDWriteTextFormat> {
     let family = HSTRING::from(FONT_FAMILY);
-    let locale = HSTRING::from("en-US");
+    let locale = HSTRING::from("zh-CN");
     unsafe {
         let format = dwrite.CreateTextFormat(
             &family,
