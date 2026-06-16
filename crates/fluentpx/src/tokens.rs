@@ -235,13 +235,14 @@ impl Tokens {
 
     /// `ControlElevationBorderBrush`：立体高光边（普通按钮/ComboBox 边框）。
     /// 源码 MappingMode=Absolute，0,0 -> 0,3；stop0.33=StrokeSecondary，stop1.0=StrokeDefault。
-    /// 高光较亮的一道按观察到的真实 WinUI 渲染放在**底部**（flip_y），与 Accent 一致。
+    /// **按主题区分**（与源码两套字典一致）：深色字典无 ScaleY 翻转→高光在顶部；
+    /// 浅色字典带 `ScaleY=-1`→翻到底部。故 flip_y = !is_dark。
     pub fn control_elevation_border(&self) -> LinearGradient {
         LinearGradient {
             start: (0.0, 0.0),
             end: (0.0, 3.0),
             absolute: true,
-            flip_y: true,
+            flip_y: !self.is_dark,
             stops: vec![
                 GradientStop { offset: 0.33, color: self.stroke_secondary },
                 GradientStop { offset: 1.0, color: self.stroke_default },
