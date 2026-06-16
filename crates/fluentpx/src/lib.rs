@@ -18,6 +18,7 @@
 #![cfg(windows)]
 
 pub mod anim;
+pub mod clipboard;
 pub mod color;
 pub mod controls;
 pub mod dpi;

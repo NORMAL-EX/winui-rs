@@ -99,6 +99,8 @@ pub enum InputEvent {
     Char(char),
     /// 鼠标滚轮，正值向上。
     Wheel(f32),
+    /// 右键 / 上下文菜单请求（坐标为请求位置）。
+    ContextMenu(Point),
 }
 
 /// 事件处理结果：是否需要重绘，以及是否仍有动画在进行（需持续刷新）。

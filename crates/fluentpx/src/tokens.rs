@@ -92,11 +92,15 @@ pub struct Tokens {
     // —— 强调填充 ——
     pub accent_fill_disabled: Color,
 
-    // —— 系统语义色 ——
+    // —— 系统语义色（前景 + InfoBar 背景）——
     pub system_success: Color,
     pub system_caution: Color,
     pub system_critical: Color,
     pub system_neutral: Color,
+    pub system_success_bg: Color,
+    pub system_caution_bg: Color,
+    pub system_critical_bg: Color,
+    pub system_attention_bg: Color,
 }
 
 impl Tokens {
@@ -156,6 +160,10 @@ impl Tokens {
             system_caution: Color::hex("#FCE100"),
             system_critical: Color::hex("#FF99A4"),
             system_neutral: Color::hex("#8BFFFFFF"),
+            system_success_bg: Color::hex("#393D1B"),
+            system_caution_bg: Color::hex("#433519"),
+            system_critical_bg: Color::hex("#442726"),
+            system_attention_bg: Color::hex("#08FFFFFF"),
         }
     }
 
@@ -215,6 +223,10 @@ impl Tokens {
             system_caution: Color::hex("#9D5D00"),
             system_critical: Color::hex("#C42B1C"),
             system_neutral: Color::hex("#72000000"),
+            system_success_bg: Color::hex("#DFF6DD"),
+            system_caution_bg: Color::hex("#FFF4CE"),
+            system_critical_bg: Color::hex("#FDE7E9"),
+            system_attention_bg: Color::hex("#80F6F6F6"),
         }
     }
 

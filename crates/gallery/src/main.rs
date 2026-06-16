@@ -20,8 +20,8 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
 use fluentpx::controls::{
-    Button, ComboBox, ContentDialog, ListView, Menu, Slider, TabView, TextBox, ToggleSwitch,
-    ToolTip,
+    Button, ComboBox, ContentDialog, InfoBar, ListView, Menu, NavigationView, Severity, Slider,
+    TabView, TextBox, ToggleSwitch, ToolTip,
 };
 use fluentpx::gfx::{Gfx, Surface};
 use fluentpx::typography::TextStyle;
@@ -174,12 +174,27 @@ impl App {
                 ],
             },
             Section {
-                title: "Menu（菜单）".into(),
+                title: "MenuFlyout（弹出菜单）".into(),
                 title_y: 0.0,
                 items: vec![Box::new(Menu::new(
                     "菜单",
                     vec!["新建".into(), "打开".into(), "保存".into(), "另存为".into(), "退出".into()],
                 ))],
+            },
+            Section {
+                title: "NavigationView（导航菜单，可展开/收缩）".into(),
+                title_y: 0.0,
+                items: vec![Box::new(NavigationView::demo())],
+            },
+            Section {
+                title: "InfoBar（通知条）".into(),
+                title_y: 0.0,
+                items: vec![
+                    Box::new(InfoBar::new(Severity::Informational, "提示", "这是一条普通信息通知。")),
+                    Box::new(InfoBar::new(Severity::Success, "成功", "操作已成功完成。")),
+                    Box::new(InfoBar::new(Severity::Warning, "警告", "请注意潜在的问题。")),
+                    Box::new(InfoBar::new(Severity::Error, "错误", "发生了一个错误，请重试。")),
+                ],
             },
         ];
         App {
@@ -246,6 +261,11 @@ impl App {
             let mut row_h: f32 = 0.0;
             for item in &mut sec.items {
                 let want = item.measure(fluentpx::Size { w: avail_w, h: 40.0 });
+                // 折叠尺寸为 0 的控件（如已关闭的 InfoBar），不占位。
+                if want.h < 1.0 {
+                    item.arrange(Rect::new(x, row_top, 0.0, 0.0));
+                    continue;
+                }
                 let w = want.w.min(avail_w).max(40.0);
                 let h = want.h.max(32.0);
                 // 换行：本行已有内容且放不下。
@@ -603,6 +623,15 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             if is_touch_or_pen() {
                 r = r.or(app.dispatch(InputEvent::PointerLeave));
             }
+            if r.redraw {
+                let _ = InvalidateRect(hwnd, None, false);
+            }
+            app.update_timer();
+            LRESULT(0)
+        }
+        WM_RBUTTONUP => {
+            let p = lparam_point(lparam, app.scale());
+            let r = app.dispatch(InputEvent::ContextMenu(p));
             if r.redraw {
                 let _ = InvalidateRect(hwnd, None, false);
             }

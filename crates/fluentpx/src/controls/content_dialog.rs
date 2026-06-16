@@ -9,8 +9,11 @@
 //! 模态焦点捕获：打开时由 gallery 把事件**仅**派发给本控件（见 main 的 dispatch）。
 //! 触发器：本控件在主层画一个「Show ContentDialog」按钮，点击后打开。
 
+use crate::anim::ease_out;
 use crate::typography::TextStyle;
 use crate::widget::*;
+
+const OPEN_DUR: f64 = 0.18;
 
 const CORNER: f32 = 8.0;
 const PAD: f32 = 24.0;
@@ -33,6 +36,7 @@ pub struct ContentDialog {
     hover_primary: bool,
     hover_close: bool,
     viewport: Size,
+    open_start: f64,
 }
 
 impl ContentDialog {
@@ -51,6 +55,7 @@ impl ContentDialog {
             hover_primary: false,
             hover_close: false,
             viewport: Size { w: 800.0, h: 600.0 },
+            open_start: 0.0,
         }
     }
 
@@ -100,41 +105,54 @@ impl Widget for ContentDialog {
         let t = ctx.tokens;
         let vp = ctx.viewport;
 
-        // 全窗 smoke 遮罩
-        ctx.painter.fill_rect(Rect { x: 0.0, y: 0.0, w: vp.w, h: vp.h }, t.smoke_fill_default);
+        // 入场动画：smoke 淡入；卡片从 1.06 缩放 + 淡入。
+        let prog = ease_out(((ctx.now - self.open_start) / OPEN_DUR).clamp(0.0, 1.0) as f32);
+        let alpha = prog;
 
-        let d = self.dialog_rect(vp);
+        // 全窗 smoke 遮罩
+        ctx.painter.fill_rect(Rect { x: 0.0, y: 0.0, w: vp.w, h: vp.h }, t.smoke_fill_default.with_opacity(alpha));
+
+        // 事件命中用最终矩形；绘制用缩放矩形（围绕中心）。
+        let d_final = self.dialog_rect(vp);
+        let scale = 1.06 + (1.0 - 1.06) * prog;
+        let cx = d_final.center_x();
+        let cy = d_final.center_y();
+        let d = Rect {
+            x: cx - d_final.w * scale / 2.0,
+            y: cy - d_final.h * scale / 2.0,
+            w: d_final.w * scale,
+            h: d_final.h * scale,
+        };
         // 卡片
-        ctx.painter.fill_rounded_rect(d, CORNER, t.solid_bg_base);
-        ctx.painter.stroke_inner(d, CORNER, t.strong_stroke_default, BORDER);
+        ctx.painter.fill_rounded_rect(d, CORNER, t.solid_bg_base.with_opacity(alpha));
+        ctx.painter.stroke_inner(d, CORNER, t.strong_stroke_default.with_opacity(alpha), BORDER);
 
         // 标题 + 正文
         let title_rect = Rect { x: d.x + PAD, y: d.y + PAD, w: d.w - PAD * 2.0, h: 28.0 };
-        let _ = ctx.painter.draw_text_leading(&self.title, TextStyle::SUBTITLE, title_rect, t.text_primary);
+        let _ = ctx.painter.draw_text_leading(&self.title, TextStyle::SUBTITLE, title_rect, t.text_primary.with_opacity(alpha));
         let body_rect = Rect { x: d.x + PAD, y: title_rect.bottom() + 8.0, w: d.w - PAD * 2.0, h: 40.0 };
-        let _ = ctx.painter.draw_text_leading(&self.body, TextStyle::BODY, body_rect, t.text_secondary);
+        let _ = ctx.painter.draw_text_leading(&self.body, TextStyle::BODY, body_rect, t.text_secondary.with_opacity(alpha));
 
-        // 底部两个按钮（主=Accent，次=Standard），右对齐，等宽平分一行更接近 WinUI。
-        let row_y = d.bottom() - PAD - BTN_H;
-        let total_w = d.w - PAD * 2.0;
+        // 底部两个按钮命中区用最终矩形（不随缩放抖动）。
+        let row_y = d_final.bottom() - PAD - BTN_H;
+        let total_w = d_final.w - PAD * 2.0;
         let bw = (total_w - BTN_SPACING) / 2.0;
-        self.primary_rect = Rect { x: d.x + PAD, y: row_y, w: bw, h: BTN_H };
+        self.primary_rect = Rect { x: d_final.x + PAD, y: row_y, w: bw, h: BTN_H };
         self.close_rect = Rect { x: self.primary_rect.right() + BTN_SPACING, y: row_y, w: bw, h: BTN_H };
 
         // 主按钮（Accent）
         let pbg = if self.hover_primary { t.accent_fill_secondary() } else { t.accent_fill_default() };
-        ctx.painter.fill_rounded_rect(self.primary_rect, 4.0, pbg);
-        let _ = ctx.painter.stroke_inner_gradient(self.primary_rect, 4.0, &t.accent_control_elevation_border(), 1.0);
-        let _ = ctx.painter.draw_text_centered(&self.primary_text, TextStyle::BODY, self.primary_rect, t.text_on_accent_primary);
+        ctx.painter.fill_rounded_rect(self.primary_rect, 4.0, pbg.with_opacity(alpha));
+        let _ = ctx.painter.draw_text_centered(&self.primary_text, TextStyle::BODY, self.primary_rect, t.text_on_accent_primary.with_opacity(alpha));
 
         // 次按钮（Standard）
         let cbg = if self.hover_close { t.control_fill_secondary } else { t.control_fill_default };
-        ctx.painter.fill_rounded_rect(self.close_rect.inset(BORDER), 3.0, cbg);
-        let _ = ctx.painter.stroke_inner_gradient(self.close_rect, 4.0, &t.control_elevation_border(), 1.0);
-        let _ = ctx.painter.draw_text_centered(&self.close_text, TextStyle::BODY, self.close_rect, t.text_primary);
+        ctx.painter.fill_rounded_rect(self.close_rect.inset(BORDER), 3.0, cbg.with_opacity(alpha));
+        let _ = ctx.painter.stroke_inner(self.close_rect, 4.0, t.stroke_default.with_opacity(alpha), 1.0);
+        let _ = ctx.painter.draw_text_centered(&self.close_text, TextStyle::BODY, self.close_rect, t.text_primary.with_opacity(alpha));
     }
 
-    fn on_event(&mut self, ev: InputEvent, _now: f64) -> EventResult {
+    fn on_event(&mut self, ev: InputEvent, now: f64) -> EventResult {
         let mut redraw = false;
         if self.open {
             // 模态：仅处理两个按钮的悬停/点击；点遮罩不关闭（与 WinUI 一致）。
@@ -191,6 +209,7 @@ impl Widget for ContentDialog {
             InputEvent::PointerUp(p) => {
                 if self.trigger_pressed && self.trigger.contains(p) {
                     self.open = true;
+                    self.open_start = now;
                 }
                 self.trigger_pressed = false;
                 redraw = true;
@@ -198,6 +217,10 @@ impl Widget for ContentDialog {
             _ => {}
         }
         EventResult { redraw, animating: false }
+    }
+
+    fn is_animating(&self, now: f64) -> bool {
+        self.open && (now - self.open_start) < OPEN_DUR
     }
 
     fn wants_modal(&self) -> bool {

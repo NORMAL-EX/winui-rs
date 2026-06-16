@@ -330,10 +330,11 @@ impl<'a> Painter<'a> {
         Ok(())
     }
 
-    /// 绘制一个 Segoe Fluent Icons 图标字形（如 ComboBox 的 ChevronDown `\u{E70D}`），
-    /// 居中于 `r`。回退 `Segoe MDL2 Assets`。`size` 为逻辑像素字号。
+    /// 绘制一个图标字形（如 ComboBox 的 ChevronDown `\u{E70D}`），居中于 `r`。
+    /// 用 `Segoe MDL2 Assets`（Win10/11 均自带；Win11 独有的 `Segoe Fluent Icons`
+    /// 在 Win10 缺失会渲染成缺字方块，故统一用 MDL2，码位兼容）。`size` 为逻辑像素字号。
     pub fn draw_icon(&self, glyph: char, size: f32, r: Rect, color: Color) -> Result<()> {
-        let family = windows::core::HSTRING::from("Segoe Fluent Icons");
+        let family = windows::core::HSTRING::from("Segoe MDL2 Assets");
         let locale = windows::core::HSTRING::from("en-US");
         let format = unsafe {
             self.dwrite.CreateTextFormat(

@@ -11,6 +11,7 @@
 //!
 //! 限制：本实现为**不可编辑** ComboBox。可编辑 + 中文输入需对接 TSF，列为后续。
 
+use crate::anim::ease_out;
 use crate::color::Color;
 use crate::typography::TextStyle;
 use crate::widget::*;
@@ -27,6 +28,7 @@ const ITEM_H: f32 = 32.0;
 const POPUP_VPAD: f32 = 4.0;
 const IND_W: f32 = 3.0;
 const IND_H: f32 = 16.0;
+const OPEN_DUR: f64 = 0.15;
 
 pub struct ComboBox {
     pub items: Vec<String>,
@@ -37,6 +39,7 @@ pub struct ComboBox {
     hovered_item: Option<usize>,
     rect: Rect,
     pub enabled: bool,
+    open_start: f64,
 }
 
 impl ComboBox {
@@ -50,6 +53,7 @@ impl ComboBox {
             hovered_item: None,
             rect: Rect::default(),
             enabled: true,
+            open_start: 0.0,
         }
     }
 
@@ -121,16 +125,22 @@ impl Widget for ComboBox {
             return;
         }
         let t = ctx.tokens;
-        let p = self.popup_rect();
+        // 开合动画：透明度 + 纵向位移（与 Menu 一致的弹出观感）。
+        let prog = ease_out(((ctx.now - self.open_start) / OPEN_DUR).clamp(0.0, 1.0) as f32);
+        let dy = (1.0 - prog) * -8.0;
+        let alpha = prog;
+        let base = self.popup_rect();
+        let p = Rect { y: base.y + dy, ..base };
 
         // 阴影近似
-        ctx.painter.fill_rounded_rect(Rect { y: p.y + 2.0, ..p }, POPUP_CORNER, Color::hex("#30000000"));
+        ctx.painter.fill_rounded_rect(Rect { y: p.y + 2.0, ..p }, POPUP_CORNER, Color::hex("#30000000").with_opacity(alpha));
         // 背景（acrylic 近似）+ 边框
-        ctx.painter.fill_rounded_rect(p, POPUP_CORNER, t.solid_bg_tertiary);
-        ctx.painter.stroke_inner(p, POPUP_CORNER, t.surface_stroke_flyout, 1.0);
+        ctx.painter.fill_rounded_rect(p, POPUP_CORNER, t.solid_bg_tertiary.with_opacity(alpha));
+        ctx.painter.stroke_inner(p, POPUP_CORNER, t.surface_stroke_flyout.with_opacity(alpha), 1.0);
 
         for i in 0..self.items.len() {
-            let ir = self.popup_item_rect(i);
+            let mut ir = self.popup_item_rect(i);
+            ir.y += dy;
             let selected = i == self.selected;
             let hovered = self.hovered_item == Some(i);
             let bg = if selected && hovered {
@@ -141,18 +151,18 @@ impl Widget for ComboBox {
                 Color::TRANSPARENT
             };
             if bg.a != 0 {
-                ctx.painter.fill_rounded_rect(Rect { x: ir.x + 4.0, y: ir.y + 1.0, w: ir.w - 8.0, h: ir.h - 2.0 }, 4.0, bg);
+                ctx.painter.fill_rounded_rect(Rect { x: ir.x + 4.0, y: ir.y + 1.0, w: ir.w - 8.0, h: ir.h - 2.0 }, 4.0, bg.with_opacity(alpha));
             }
             if selected {
                 let ind = Rect { x: ir.x + 4.0, y: ir.center_y() - IND_H / 2.0, w: IND_W, h: IND_H };
-                ctx.painter.fill_rounded_rect(ind, 1.5, t.accent_fill_default());
+                ctx.painter.fill_rounded_rect(ind, 1.5, t.accent_fill_default().with_opacity(alpha));
             }
             let text_rect = Rect { x: ir.x + PAD_L, y: ir.y, w: ir.w - PAD_L - 8.0, h: ir.h };
-            let _ = ctx.painter.draw_text_leading(&self.items[i], TextStyle::BODY, text_rect, t.text_primary);
+            let _ = ctx.painter.draw_text_leading(&self.items[i], TextStyle::BODY, text_rect, t.text_primary.with_opacity(alpha));
         }
     }
 
-    fn on_event(&mut self, ev: InputEvent, _now: f64) -> EventResult {
+    fn on_event(&mut self, ev: InputEvent, now: f64) -> EventResult {
         if !self.enabled {
             return EventResult::NONE;
         }
@@ -190,6 +200,9 @@ impl Widget for ComboBox {
             InputEvent::PointerUp(pt) => {
                 if self.pressed_box && self.rect.contains(pt) {
                     self.open = !self.open;
+                    if self.open {
+                        self.open_start = now;
+                    }
                     redraw = true;
                 } else if self.open {
                     if let Some(i) = self.item_at(pt) {
@@ -202,7 +215,11 @@ impl Widget for ComboBox {
             }
             _ => {}
         }
-        EventResult { redraw, animating: false }
+        EventResult { redraw, animating: self.open }
+    }
+
+    fn is_animating(&self, now: f64) -> bool {
+        self.open && (now - self.open_start) < OPEN_DUR
     }
 
     fn wants_modal(&self) -> bool {

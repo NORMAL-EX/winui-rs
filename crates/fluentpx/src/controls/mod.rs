@@ -29,3 +29,9 @@ pub use textbox::TextBox;
 
 mod menu;
 pub use menu::Menu;
+
+mod infobar;
+pub use infobar::{InfoBar, Severity};
+
+mod navigation_view;
+pub use navigation_view::{NavItem, NavigationView};
