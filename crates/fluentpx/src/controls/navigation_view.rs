@@ -43,6 +43,10 @@ pub struct NavigationView {
     // 选中指示条 + 页面切换动画
     prev_selected: usize,
     sel_start: f64,
+    /// 应用外壳模式：铺满整个 rect、无卡片边框，内容区交给宿主应用绘制。
+    pub app_shell: bool,
+    /// 是否绘制内置演示内容（gallery 用 true；应用外壳用 false 由宿主填内容）。
+    pub show_demo_content: bool,
 }
 
 impl NavigationView {
@@ -59,7 +63,23 @@ impl NavigationView {
             anim_start: -1.0,
             prev_selected: selected,
             sel_start: -1.0,
+            app_shell: false,
+            show_demo_content: true,
         }
+    }
+
+    /// 作为应用外壳：铺满窗口、内容区由宿主填充。
+    pub fn shell(items: Vec<NavItem>, selected: usize) -> NavigationView {
+        let mut n = NavigationView::new(items, selected, true);
+        n.app_shell = true;
+        n.show_demo_content = false;
+        n
+    }
+
+    /// 当前内容区矩形（窗格右侧），供应用外壳模式下宿主绘制页面。
+    pub fn content_area(&self, now: f64) -> Rect {
+        let pane_w = self.pane_w(now);
+        Rect { x: self.rect.x + pane_w + 1.0, y: self.rect.y, w: (self.rect.w - pane_w - 1.0).max(0.0), h: self.rect.h }
     }
 
     /// 默认演示项。
@@ -116,13 +136,19 @@ impl Widget for NavigationView {
         let pane_w = self.pane_w(now);
         let open_amt = self.progress(now); // 0..1 文字淡入
 
-        // 整体卡片 + 边框
-        ctx.painter.fill_rounded_rect(self.rect, 6.0, t.solid_bg_base);
-        ctx.painter.stroke_inner(self.rect, 6.0, t.divider_stroke_default, 1.0);
+        // 整体卡片 + 边框（应用外壳模式下铺满、无卡片边框）
+        if !self.app_shell {
+            ctx.painter.fill_rounded_rect(self.rect, 6.0, t.solid_bg_base);
+            ctx.painter.stroke_inner(self.rect, 6.0, t.divider_stroke_default, 1.0);
+        }
 
         // 窗格背景（略深）
         let pane = Rect { x: self.rect.x, y: self.rect.y, w: pane_w, h: self.rect.h };
-        ctx.painter.fill_rounded_rect(pane, 6.0, t.solid_bg_secondary);
+        if self.app_shell {
+            ctx.painter.fill_rect(pane, t.solid_bg_secondary);
+        } else {
+            ctx.painter.fill_rounded_rect(pane, 6.0, t.solid_bg_secondary);
+        }
         // 窗格右侧分隔线
         ctx.painter.fill_rect(Rect { x: self.rect.x + pane_w, y: self.rect.y, w: 1.0, h: self.rect.h }, t.divider_stroke_default);
 
@@ -157,28 +183,30 @@ impl Widget for NavigationView {
         let ind = Rect { x: self.rect.x + 2.0, y: top, w: IND_W, h: (bot - top).max(1.0) };
         ctx.painter.fill_rounded_rect(ind, IND_W / 2.0, t.accent_fill_default());
 
-        // 右侧内容区：页面进入动画（Entrance：下移 + 淡入），裁剪避免溢出。
-        let content = Rect { x: self.rect.x + pane_w + 1.0, y: self.rect.y, w: (self.rect.w - pane_w - 1.0).max(0.0), h: self.rect.h };
-        ctx.painter.push_clip(content);
-        let pp = if self.sel_start < 0.0 {
-            1.0
-        } else {
-            ease_out(((now - self.sel_start) / PAGE_DUR).clamp(0.0, 1.0) as f32)
-        };
-        let dy = (1.0 - pp) * PAGE_OFFSET;
-        let _ = ctx.painter.draw_text_leading(
-            &self.items[self.selected].label,
-            TextStyle::SUBTITLE,
-            Rect { x: content.x + 24.0, y: content.y + 24.0 + dy, w: content.w - 48.0, h: 32.0 },
-            t.text_primary.with_opacity(pp),
-        );
-        let _ = ctx.painter.draw_text_leading(
-            "这是导航内容区。点左侧汉堡 ☰ 可展开/收缩；切换项有指示条滑动 + 页面进入动画。",
-            TextStyle::BODY,
-            Rect { x: content.x + 24.0, y: content.y + 64.0 + dy, w: content.w - 48.0, h: 24.0 },
-            t.text_secondary.with_opacity(pp),
-        );
-        ctx.painter.pop_clip();
+        // 右侧内容区演示（仅 gallery 演示用；应用外壳由宿主在 content_area 自行绘制）。
+        if self.show_demo_content {
+            let content = Rect { x: self.rect.x + pane_w + 1.0, y: self.rect.y, w: (self.rect.w - pane_w - 1.0).max(0.0), h: self.rect.h };
+            ctx.painter.push_clip(content);
+            let pp = if self.sel_start < 0.0 {
+                1.0
+            } else {
+                ease_out(((now - self.sel_start) / PAGE_DUR).clamp(0.0, 1.0) as f32)
+            };
+            let dy = (1.0 - pp) * PAGE_OFFSET;
+            let _ = ctx.painter.draw_text_leading(
+                &self.items[self.selected].label,
+                TextStyle::SUBTITLE,
+                Rect { x: content.x + 24.0, y: content.y + 24.0 + dy, w: content.w - 48.0, h: 32.0 },
+                t.text_primary.with_opacity(pp),
+            );
+            let _ = ctx.painter.draw_text_leading(
+                "这是导航内容区。点左侧汉堡 ☰ 可展开/收缩；切换项有指示条滑动 + 页面进入动画。",
+                TextStyle::BODY,
+                Rect { x: content.x + 24.0, y: content.y + 64.0 + dy, w: content.w - 48.0, h: 24.0 },
+                t.text_secondary.with_opacity(pp),
+            );
+            ctx.painter.pop_clip();
+        }
     }
 
     fn on_event(&mut self, ev: InputEvent, now: f64) -> EventResult {
