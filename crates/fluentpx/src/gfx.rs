@@ -330,6 +330,51 @@ impl<'a> Painter<'a> {
         Ok(())
     }
 
+    /// 绘制一个 Segoe Fluent Icons 图标字形（如 ComboBox 的 ChevronDown `\u{E70D}`），
+    /// 居中于 `r`。回退 `Segoe MDL2 Assets`。`size` 为逻辑像素字号。
+    pub fn draw_icon(&self, glyph: char, size: f32, r: Rect, color: Color) -> Result<()> {
+        let family = windows::core::HSTRING::from("Segoe Fluent Icons");
+        let locale = windows::core::HSTRING::from("en-US");
+        let format = unsafe {
+            self.dwrite.CreateTextFormat(
+                &family,
+                None,
+                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                size * self.scale,
+                &locale,
+            )?
+        };
+        unsafe {
+            format.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+            format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+        }
+        self.set_brush(color);
+        let mut buf = [0u16; 2];
+        let wide = glyph.encode_utf16(&mut buf);
+        let layout_rect = self.dev_rect(r);
+        unsafe {
+            self.rt.DrawText(
+                wide,
+                &format,
+                &layout_rect,
+                self.brush,
+                D2D1_DRAW_TEXT_OPTIONS_NONE,
+                DWRITE_MEASURING_MODE_NATURAL,
+            )
+        };
+        Ok(())
+    }
+
+    /// 直线（逻辑坐标），用于分隔线/简单图形。
+    pub fn draw_line(&self, x0: f32, y0: f32, x1: f32, y1: f32, color: Color, width: f32) {
+        self.set_brush(color);
+        let p0 = D2D_POINT_2F { x: self.dev(x0), y: self.dev(y0) };
+        let p1 = D2D_POINT_2F { x: self.dev(x1), y: self.dev(y1) };
+        unsafe { self.rt.DrawLine(p0, p1, self.brush, self.dev(width).max(1.0), None) };
+    }
+
     /// 压入一个裁剪矩形（用于弹出层/列表内容）。需配对 [`Painter::pop_clip`]。
     pub fn push_clip(&self, r: Rect) {
         unsafe {

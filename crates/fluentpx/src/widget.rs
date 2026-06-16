@@ -119,6 +119,8 @@ pub struct PaintCtx<'a, 'b> {
     pub dpi: Dpi,
     /// 单调时间（秒），用于动画曲线求值。
     pub now: f64,
+    /// 客户区逻辑尺寸，供覆盖层（如 ContentDialog 遮罩）铺满全窗。
+    pub viewport: Size,
 }
 
 /// 为将来 UIA 预留的无障碍角色（暂不实装，但控件需声明，避免以后无处挂接）。
@@ -146,8 +148,12 @@ pub trait Widget {
     /// 命中测试（逻辑坐标）。
     fn hit_test(&self, p: Point) -> bool;
 
-    /// 绘制。
+    /// 绘制（主层）。
     fn paint(&mut self, ctx: &mut PaintCtx);
+
+    /// 绘制覆盖层（弹出/遮罩），在所有控件主层绘制完成后统一再画一遍，
+    /// 用于 ComboBox 下拉、ToolTip、ContentDialog 等需置顶的内容。默认无。
+    fn paint_overlay(&mut self, _ctx: &mut PaintCtx) {}
 
     /// 处理输入事件。`now` 为单调时间（秒），供控件记录动画起点。
     fn on_event(&mut self, _ev: InputEvent, _now: f64) -> EventResult {
@@ -156,6 +162,12 @@ pub trait Widget {
 
     /// 是否有动画正在进行（决定是否继续高频重绘）。
     fn is_animating(&self, _now: f64) -> bool {
+        false
+    }
+
+    /// 是否正处于模态状态（如打开的 ComboBox 下拉 / ContentDialog）：
+    /// 为 true 时宿主只把事件派发给本控件，实现焦点捕获。
+    fn wants_modal(&self) -> bool {
         false
     }
 
